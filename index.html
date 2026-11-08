@@ -1,0 +1,2551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e0a10">
+<meta name="description" content="A candlelit tarot reading game with a reader who hesitates, remembers, and reads the whole spread.">
+<title>Madame Oriel's Tarot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap">
+<style>
+/* page reset (the artifact viewer supplies this; standalone needs it) */
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+/* Layout: one-screen reading room. Header, card table (changes with phase), dialogue log, input tray.
+   Look: candlelit, single dark world by design. Printed-type serif, amber flame, wine and tarnished gold. */
+:root {
+  --ink: #0e0a10; --ink2: #181019; --ink3: #261727;
+  --wine: #6b1d31; --wine-hi: #a3324d;
+  --ember: #eaa24c; --gold: #c9a45c; --bone: #eadfcf; --dim: #a1958b;
+  --line: rgba(201, 164, 92, .3);
+  --disp: 'IM Fell English SC', Georgia, 'Times New Roman', serif;
+  --body: 'IM Fell English', Georgia, 'Times New Roman', serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --flick: 1; --dark: 0; --table-h: 0px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--ink); color: var(--bone); font-family: var(--body); font-size: 18px; line-height: 1.5;
+  padding-block: 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow: hidden; -webkit-tap-highlight-color: transparent;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+
+#app { position: relative; height: 100%; display: flex; flex-direction: column; max-width: 720px; margin: 0 auto; }
+#fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+#window { position: fixed; inset: 0 0 auto 0; height: 44%; pointer-events: none; z-index: 0;
+  background: linear-gradient(to bottom, rgba(96, 116, 160, .10), transparent);
+  border-bottom: 1px solid rgba(160, 176, 205, .06); }
+#window::before, #window::after { content: ""; position: absolute; background: rgba(160, 176, 205, .07); }
+#window::before { left: 50%; top: 0; bottom: 0; width: 2px; }
+#window::after { top: 50%; left: 0; right: 0; height: 2px; }
+#glow { position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse 90% 55% at 50% 108%, rgba(234, 162, 76, calc(.26 * var(--flick))), transparent 70%); }
+#vignette { position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse at 50% 45%, transparent 38%, rgba(0, 0, 0, calc(.5 + var(--dark) * .35)) 100%); transition: background .8s; }
+#app > header, #stage { position: relative; z-index: 1; }
+
+/* Header */
+#bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; border-bottom: 1px solid var(--line); }
+.brand { font-family: var(--disp); font-size: 18px; letter-spacing: .08em; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.bar-btns { display: flex; gap: 6px; flex: none; }
+.tbtn { min-height: 40px; min-width: 44px; padding: 0 12px; background: transparent; border: 1px solid var(--line); border-radius: 2px;
+  font-family: var(--disp); font-size: 15px; letter-spacing: .06em; color: var(--dim); }
+.tbtn[aria-pressed="true"], .tbtn.on { color: var(--ember); border-color: var(--ember); }
+
+/* Stage */
+#stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#table { position: relative; flex: none; height: var(--table-h); overflow: hidden; transition: height .6s ease; touch-action: none; }
+#dialogue { flex: 1; min-height: 0; position: relative; }
+#log { position: absolute; inset: 0; overflow-y: auto; padding: 14px 2px 10px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 26px); mask-image: linear-gradient(to bottom, transparent 0, #000 26px); }
+#controls { flex: none; padding: 8px 0 14px; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+#controls:empty { padding: 0; }
+
+.phase-shuffle { --table-h: 30vh; }
+.phase-pick { --table-h: min(58vh, 520px); }
+.phase-reading, .phase-end { --table-h: 208px; }
+.phase-reading.spread-celtic, .phase-end.spread-celtic { --table-h: min(50vh, 440px); }
+
+/* Dialogue lines */
+.ln { margin: 0 0 .7em; font-size: 18px; line-height: 1.55; color: var(--bone); text-wrap: pretty; }
+.ln.act { font-style: italic; font-size: 15px; color: var(--dim); }
+.ln.title { font-family: var(--disp); font-size: 19px; letter-spacing: .1em; color: var(--gold); margin-top: .5em; }
+.ln.combo { color: #f6d6a8; text-shadow: 0 0 16px rgba(234, 162, 76, .4); }
+.ln.combo.heavy { color: #f2bdb4; text-shadow: 0 0 16px rgba(190, 50, 75, .55); }
+.ln.me { text-align: right; font-style: italic; color: var(--ember); font-size: 16px; }
+.ln.caret::after { content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: -0.12em; background: var(--ember); animation: blink 1s steps(2) infinite; }
+.dots { display: inline-flex; gap: 5px; margin: 0 0 .9em; height: 1.4em; align-items: center; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); animation: dot 1.1s infinite ease-in-out; }
+.dots i:nth-child(2) { animation-delay: .18s; } .dots i:nth-child(3) { animation-delay: .36s; }
+@keyframes dot { 0%, 80%, 100% { opacity: .2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@keyframes blink { to { visibility: hidden; } }
+
+/* Controls */
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip, .btn { min-height: 44px; padding: 8px 14px; background: rgba(24, 16, 25, .85); border: 1px solid var(--line); border-radius: 2px;
+  font-family: var(--disp); font-size: 16px; letter-spacing: .05em; color: var(--bone); transition: border-color .2s, background .2s, color .2s; }
+.chip:hover, .btn:hover { border-color: var(--ember); }
+.chip.q { font-family: var(--body); font-style: italic; font-size: 15px; letter-spacing: 0; color: var(--dim); }
+.btn.primary { background: var(--ember); color: #1d1108; border-color: var(--ember); }
+.btn.primary:hover { background: #f4b866; }
+.opt { flex: 1 1 140px; display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 12px 14px; min-height: 64px; background: rgba(24, 16, 25, .85);
+  border: 1px solid var(--line); border-radius: 2px; }
+.opt b { font-family: var(--disp); font-weight: 400; font-size: 18px; letter-spacing: .06em; color: var(--gold); }
+.opt span { font-size: 14px; color: var(--dim); }
+.opt:hover { border-color: var(--ember); }
+.field-row { display: flex; gap: 8px; }
+.txt { flex: 1; min-width: 0; min-height: 46px; padding: 8px 12px; background: var(--ink2); border: 0; border-bottom: 1px solid var(--gold); border-radius: 0; font-size: 18px; }
+.txt::placeholder { color: var(--dim); font-style: italic; }
+.hint { font-size: 14px; color: var(--dim); font-style: italic; margin: 0; }
+.status { font-family: var(--disp); letter-spacing: .08em; font-size: 15px; color: var(--gold); margin: 0; }
+
+/* Hold to shuffle */
+.hold { align-self: center; position: relative; width: 112px; height: 112px; border-radius: 50%; border: 1px solid var(--gold); background: radial-gradient(circle, rgba(234, 162, 76, .18), transparent 70%), var(--ink2);
+  font-family: var(--disp); font-size: 16px; letter-spacing: .08em; line-height: 1.2; color: var(--bone); touch-action: none; user-select: none; -webkit-user-select: none; }
+.hold::before { content: ""; position: absolute; inset: -7px; border-radius: 50%;
+  background: conic-gradient(var(--ember) calc(var(--p, 0) * 360deg), rgba(201, 164, 92, .18) 0); -webkit-mask: radial-gradient(circle, transparent 54px, #000 55px); mask: radial-gradient(circle, transparent 54px, #000 55px); }
+.hold.holding { transform: scale(.96); box-shadow: 0 0 30px rgba(234, 162, 76, .4); }
+
+/* Cards */
+.cb, .card .back { background: var(--back-art) center / 80% no-repeat, repeating-linear-gradient(45deg, rgba(201, 164, 92, .1) 0 2px, transparent 2px 9px), linear-gradient(160deg, #3c1428, #1a0a16);
+  border: 1.5px solid var(--gold); box-shadow: inset 0 0 0 3px #1a0a16, inset 0 0 0 4px rgba(201, 164, 92, .45); }
+.card { position: relative; width: var(--cw); height: calc(var(--cw) * 1.7); perspective: 800px; }
+.card .inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .9s cubic-bezier(.3, .7, .2, 1); }
+.card.flipped .inner { transform: rotateY(180deg); }
+.card .back, .card .face { position: absolute; inset: 0; border-radius: calc(var(--cw) * .07); backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden; }
+.card .face { transform: rotateY(180deg); box-shadow: 0 4px 18px rgba(0, 0, 0, .6); }
+.face-svg { width: 100%; height: 100%; display: block; }
+
+/* Shuffle pile */
+#pile { position: absolute; left: 50%; top: 50%; width: 64px; height: 109px; margin: -55px 0 0 -32px; display: none; }
+.phase-shuffle #pile { display: block; }
+#pile i { position: absolute; inset: 0; border-radius: 5px; }
+#pile.shuffling i:nth-child(odd) { animation: riffleA .5s infinite ease-in-out; }
+#pile.shuffling i:nth-child(even) { animation: riffleB .5s infinite ease-in-out; }
+#pile.shuffling i:nth-child(3n) { animation-duration: .38s; }
+@keyframes riffleA { 50% { transform: translateX(-42px) rotate(-9deg); } }
+@keyframes riffleB { 50% { transform: translateX(42px) rotate(9deg); } }
+
+/* Field of 78 backs */
+#field { position: absolute; inset: 40px 0 0 0; display: none; touch-action: none; cursor: crosshair; }
+.phase-pick #field { display: block; }
+.fc { position: absolute; left: 0; top: 0; width: var(--fw); height: calc(var(--fw) * 1.7); border-radius: 4px; will-change: transform; --g: 0; pointer-events: none; }
+.fc.dealing { transition: transform .9s cubic-bezier(.2, .8, .2, 1); }
+.fc .cb { position: absolute; inset: 0; border-radius: 4px; box-shadow: inset 0 0 0 3px #1a0a16, inset 0 0 0 4px rgba(201, 164, 92, .45), 0 0 calc(var(--g) * 22px) calc(var(--g) * 4px) rgba(234, 162, 76, calc(var(--g) * .7)); border-color: color-mix(in srgb, var(--gold), var(--ember) calc(var(--g) * 100%)); }
+.fc.gone { opacity: 0; transition: opacity .25s; }
+#tray { position: absolute; left: 0; right: 0; top: 0; height: 40px; display: none; justify-content: center; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.phase-pick #tray { display: flex; }
+.ts { width: 22px; height: 36px; border: 1px dashed var(--line); border-radius: 3px; flex: none; transition: box-shadow .4s, border-color .4s; }
+.ts.filled { border: 1px solid var(--gold); background: var(--back-art) center / 80% no-repeat, linear-gradient(160deg, #3c1428, #1a0a16); box-shadow: 0 0 14px rgba(234, 162, 76, .7); }
+.ts.next { border-color: var(--ember); }
+.fly { position: fixed; left: 0; top: 0; z-index: 20; pointer-events: none; border-radius: 4px; transition: transform .95s cubic-bezier(.5, 0, .2, 1), opacity .3s .8s; transform-origin: center; }
+
+/* Spread */
+#spread { position: absolute; inset: 0; display: none; justify-content: center; align-content: center; padding-top: 4px; }
+.phase-reading #spread, .phase-end #spread { display: grid; grid-template-columns: repeat(var(--cols), var(--cw)); grid-template-rows: repeat(var(--rows), auto); gap: var(--gap); }
+.sl { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; transform: translateY(10px); animation: deal .6s forwards; }
+@keyframes deal { to { opacity: 1; transform: none; } }
+.sl .card { cursor: pointer; transition: filter .5s; }
+.sl.speaking .card { filter: drop-shadow(0 0 12px rgba(234, 162, 76, .8)); }
+.sl-label { font-family: var(--disp); font-size: 12px; letter-spacing: .1em; color: var(--dim); text-align: center; line-height: 1.1; min-height: 1.1em; }
+.spread-celtic .sl-label { display: none; }
+.sl.cross { position: relative; z-index: 3; }
+.sl.cross .card { transform: rotate(90deg) scale(.86); }
+.sl.cross .sl-label { display: none; }
+.sl.crosswrap { margin-top: 0; }
+
+/* Effects */
+.shake { animation: shake .55s; }
+@keyframes shake { 15% { transform: translate(-4px, 2px); } 35% { transform: translate(5px, -3px); } 55% { transform: translate(-3px, 3px); } 75% { transform: translate(2px, -1px); } }
+#flash { position: fixed; inset: 0; background: rgba(120, 20, 40, .35); opacity: 0; pointer-events: none; z-index: 15; transition: opacity .9s; }
+#flash.on { opacity: 1; transition: opacity .08s; }
+
+/* Overlays */
+.overlay { position: fixed; inset: 0; z-index: 30; background: rgba(8, 5, 10, .94); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center;
+  padding: max(24px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px)); }
+.overlay h1 { font-family: var(--disp); font-weight: 400; font-size: clamp(30px, 8vw, 46px); letter-spacing: .12em; margin: 0; color: var(--gold); text-wrap: balance; }
+.overlay p { max-width: 30ch; margin: 0; color: var(--dim); font-style: italic; }
+.sheet { position: fixed; inset: 0; z-index: 25; background: rgba(8, 5, 10, .97); overflow-y: auto; overscroll-behavior: contain;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet-in { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.sheet h2 { font-family: var(--disp); font-weight: 400; letter-spacing: .08em; color: var(--gold); margin: 0; font-size: 22px; }
+.sheet-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.detail-face { width: min(46vw, 170px); aspect-ratio: 100 / 170; align-self: center; }
+.kw { color: var(--dim); font-style: italic; margin: 0; }
+.pill { display: inline-block; padding: 2px 8px; border: 1px solid var(--line); font-family: var(--disp); font-size: 13px; letter-spacing: .08em; color: var(--ember); }
+
+/* Logic panel */
+.logic { font-family: var(--mono); font-size: 12.5px; line-height: 1.5; color: var(--bone); }
+.logic section { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.logic h3 { font-family: var(--disp); font-weight: 400; letter-spacing: .08em; font-size: 16px; color: var(--gold); margin: 0; }
+.logic .why { color: var(--dim); font-family: var(--body); font-style: italic; font-size: 14px; margin: 0; }
+.logic .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+.logic .kv dt { color: var(--dim); } .logic .kv dd { margin: 0; overflow-wrap: anywhere; }
+.logic .scroll { overflow-x: auto; }
+.logic table { border-collapse: collapse; min-width: 100%; }
+.logic th, .logic td { text-align: left; padding: 3px 10px 3px 0; white-space: nowrap; vertical-align: top; }
+.logic th { color: var(--dim); font-weight: 400; }
+.logic .hit { color: var(--ember); } .logic .off { color: var(--dim); opacity: .7; }
+.tg { display: flex; gap: 8px; flex-wrap: wrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card .inner { transition-duration: .01s; } .fc.dealing { transition-duration: .01s; }
+  #pile.shuffling i { animation: none !important; } .shake { animation: none; } .sl { animation-duration: .01s; }
+}
+
+</style>
+</head>
+<body>
+<canvas id="fx" aria-hidden="true"></canvas>
+<div id="window" aria-hidden="true"></div>
+<div id="glow" aria-hidden="true"></div>
+<div id="vignette" aria-hidden="true"></div>
+<div id="flash" aria-hidden="true"></div>
+
+<div id="app" class="phase-intro">
+  <header id="bar">
+    <div class="brand">Madame Oriel</div>
+    <div class="bar-btns">
+      <button class="tbtn" id="btn-sound" type="button" aria-pressed="true" aria-label="Sound">Sound</button>
+      <button class="tbtn" id="btn-logic" type="button" aria-label="Open the logic panel">Logic</button>
+    </div>
+  </header>
+  <main id="stage">
+    <section id="table" aria-label="Card table">
+      <div id="pile"></div>
+      <div id="tray"></div>
+      <div id="field"></div>
+      <div id="spread"></div>
+    </section>
+    <section id="dialogue" aria-label="Reading"><div id="log" role="log" aria-live="polite"></div></section>
+    <section id="controls"></section>
+  </main>
+</div>
+
+<div id="start" class="overlay">
+  <h1>The Reading Room</h1>
+  <p>Rain on the glass, one candle, a deck that has been waiting. Sound begins when you enter.</p>
+  <button class="btn primary" id="btn-enter" type="button">Enter</button>
+</div>
+
+<div id="sheet-card" class="sheet" hidden>
+  <div class="sheet-in" id="sheet-card-body"></div>
+</div>
+<div id="sheet-logic" class="sheet logic" hidden>
+  <div class="sheet-in" id="sheet-logic-body"></div>
+</div>
+
+<script>
+// Major Arcana. Row: [name, upTone, revTone, upKeywords, upLine, revKeywords, revLine]
+// Tone scale: +2 radiant, +1 favourable, 0 neutral/ambiguous, -1 hard, -2 catastrophic
+globalThis.TD = globalThis.TD || {};
+TD.major = [
+["The Fool", 1, -1,
+ "beginnings, leap of faith, innocence, free spirit",
+ "A fresh start with no map, only instinct. The leap is lighter than you fear.",
+ "recklessness, hesitation, naivety, fear of the leap",
+ "You are either jumping without looking or refusing to jump at all. Both are a way of not choosing."],
+["The Magician", 2, -1,
+ "willpower, skill, resourcefulness, manifestation",
+ "Everything you need is already on the table. You only have to pick it up and mean it.",
+ "manipulation, untapped talent, trickery, scattered effort",
+ "Talent held back, or effort scattered in too many directions. Someone, possibly you, is not showing the whole hand."],
+["The High Priestess", 1, 0,
+ "intuition, mystery, inner voice, hidden knowledge",
+ "The answer is not outside you. Stillness will tell you more than argument.",
+ "secrets, repressed intuition, surface noise, withdrawal",
+ "You have stopped trusting what you already know. The noise around you is louder than the voice within."],
+["The Empress", 2, -1,
+ "abundance, nurture, creativity, growth",
+ "Something you have tended is ready to grow. Rest and richness are both allowed.",
+ "smothering, creative block, dependence, neglect of self",
+ "You are giving more than you are refilling. What you nurture may need space, or you do."],
+["The Emperor", 1, -1,
+ "structure, authority, stability, discipline",
+ "Order, boundaries, a steady hand on your own life. Build the walls before the house.",
+ "rigidity, control, domination, instability",
+ "Control gripped too tight, or authority missing where it is needed. Rules are either a cage or absent."],
+["The Hierophant", 1, 0,
+ "tradition, guidance, conformity, institutions",
+ "A trusted path, a teacher, an established way. There is wisdom in what has been tested.",
+ "rebellion, breaking convention, personal belief, restriction",
+ "The old rules no longer fit. You may need to write your own, or you are resisting good counsel out of pride."],
+["The Lovers", 2, -1,
+ "union, alignment, choice, values",
+ "A choice of the heart that is also a choice of values. What you choose says who you are.",
+ "misalignment, disharmony, indecision, choosing against yourself",
+ "A split between what you want and what you value. A choice avoided becomes a choice made for you."],
+["The Chariot", 1, -1,
+ "drive, victory, control, determination",
+ "Momentum is yours if you hold opposing forces on one line. Will, not luck, carries this.",
+ "loss of direction, aggression, no control, stalling",
+ "The reins have slipped. Force is being spent without direction."],
+["Strength", 2, -1,
+ "courage, patience, inner strength, compassion",
+ "Gentleness is the strongest thing in the room. Tame the fear; do not fight it.",
+ "self-doubt, raw emotion, depletion, insecurity",
+ "Your courage is quieter than usual and the doubt is loud. You are stronger than the story you tell yourself."],
+["The Hermit", 0, -1,
+ "solitude, soul-searching, inner guidance, pause",
+ "A step back to hear yourself. The lantern lights only the next few steps, and that is enough.",
+ "isolation, loneliness, withdrawal, refusing counsel",
+ "Solitude has curdled into hiding. You have pulled away from help you need."],
+["Wheel of Fortune", 1, -1,
+ "cycles, change, fate, turning point",
+ "The wheel turns and you cannot hold it still. A turning point arrives on its own timing.",
+ "resistance to change, bad luck, setbacks, clinging",
+ "You are gripping a spoke as the wheel turns. The setback is real, but it is a phase, not a verdict."],
+["Justice", 0, -1,
+ "fairness, truth, cause and effect, accountability",
+ "Truth weighs what it weighs. What you have done returns to you, cleanly.",
+ "unfairness, dishonesty, evasion, lack of accountability",
+ "Something is out of balance: a debt unpaid, a truth dodged. The scales do not forget."],
+["The Hanged Man", 0, -1,
+ "surrender, pause, new perspective, suspension",
+ "Hanging still is not failing. Seen upside down, the problem changes shape.",
+ "stalling, resistance, needless sacrifice, indecision",
+ "You are waiting out of fear and calling it patience. The sacrifice is not buying you anything."],
+["Death", -1, -1,
+ "endings, transformation, release, closing a chapter",
+ "Something is ending, and the ending is what makes the next thing possible. This is not literal death. It is a door closing.",
+ "resisting endings, stagnation, clinging to the past, slow decay",
+ "A thing that is already over is still being kept alive. Letting go will hurt less than holding on."],
+["Temperance", 1, -1,
+ "balance, moderation, patience, blending",
+ "Slowly, in right measure. Two opposites can be mixed into something that holds.",
+ "excess, imbalance, impatience, discord",
+ "Too much of one thing, too fast. The mixture will not settle until you slow down."],
+["The Devil", -1, 0,
+ "bondage, temptation, attachment, shadow self",
+ "A chain you chose, and could remove. Desire or habit holds you more than circumstance does.",
+ "release, breaking free, reclaiming power, awareness",
+ "The chain is loosening, and you have noticed it was never locked. Take the first step out."],
+["The Tower", -2, -2,
+ "sudden upheaval, collapse, revelation, shattered illusions",
+ "A structure built on a false foundation comes down fast. It hurts. It also clears the ground.",
+ "delayed collapse, fear of change, disaster postponed, aftermath",
+ "The collapse you postponed is not cancelled, and it grows heavier for the wait. Or it has already happened and you are standing in the rubble, pretending otherwise."],
+["The Star", 2, -1,
+ "hope, healing, renewal, faith",
+ "After the wreckage, a quiet light. Healing is slow and it is real.",
+ "despair, disconnection, lost faith, discouragement",
+ "The light is there but you have stopped looking up. Hope feels like effort right now."],
+["The Moon", -1, 0,
+ "illusion, intuition, fear, the unconscious, uncertainty",
+ "Nothing here is as clear as it seems. Trust the instinct, not the shadow it casts.",
+ "confusion lifting, released fear, truth surfacing, repressed emotion",
+ "The fog is thinning. What frightened you is turning out to be smaller than it looked."],
+["The Sun", 2, 1,
+ "joy, success, vitality, clarity",
+ "Warmth, clarity and a plain kind of happiness. What you feared in the dark looks simple in daylight.",
+ "dimmed joy, delayed success, unrealistic optimism, clouded clarity",
+ "The sun is behind clouds, not gone. Success is delayed, or your optimism is running ahead of the facts."],
+["Judgement", 1, -1,
+ "reckoning, awakening, calling, absolution",
+ "A call you cannot unhear. You see your past clearly and are asked to rise.",
+ "self-doubt, avoiding the call, harsh self-judgment, ignoring the lesson",
+ "You are judging yourself harder than anyone else would. The call is still there; you are pretending not to hear it."],
+["The World", 2, 0,
+ "completion, wholeness, integration, accomplishment",
+ "A cycle completes. You have arrived somewhere, and you are allowed to feel finished.",
+ "unfinished business, delays, shortcuts, lack of closure",
+ "So close, but one thread is still loose. Completion waits for you to tie it off."]
+];
+
+// Minor Arcana: Cups and Wands. Row order: Ace, 2..10, Page, Knight, Queen, King.
+// Row: [upTone, revTone, upKeywords, upLine, revKeywords, revLine]
+globalThis.TD = globalThis.TD || {};
+TD.cups = [
+[2,-1,"new love, emotional beginning, overflow, compassion",
+ "An open heart is offered something new. Feeling is allowed to rise.",
+ "emotional block, emptiness, repressed feeling, spilled love",
+ "Feeling is being held back, or poured out where it is not received."],
+[2,-1,"partnership, mutual attraction, harmony, bond",
+ "Two people meeting as equals. A real exchange, given and returned.",
+ "imbalance, broken communication, disconnection, one-sided effort",
+ "The give and take has tipped. One of you is carrying the bond."],
+[2,-1,"celebration, friendship, community, joy",
+ "Shared joy, good company, a circle that holds you.",
+ "overindulgence, gossip, isolation from the group, third-party trouble",
+ "The circle has frayed through excess, gossip, or a seat that stays empty."],
+[0,1,"apathy, contemplation, discontent, missed offers",
+ "A cup is offered and you are looking elsewhere. Numbness is dulling what is in front of you.",
+ "re-engagement, new awareness, acceptance, moving on from apathy",
+ "You are finally noticing what was offered. The stillness is ending."],
+[-1,1,"loss, grief, regret, fixation on what has spilled",
+ "Three cups have fallen and you cannot look away. Two still stand behind you.",
+ "acceptance, moving on, forgiveness, finding the remaining cups",
+ "You are turning around, slowly, to see what remains."],
+[1,-1,"nostalgia, childhood, innocence, reunion",
+ "Something from the past returns, gentle and sweet. Kindness carried from an earlier time.",
+ "stuck in the past, rose-tinted memory, leaving home, growing up",
+ "The past is being romanticised, or you are being asked to outgrow it."],
+[0,1,"choices, fantasy, illusion, wishful thinking",
+ "Many glittering options, and not all of them are real. Look at which ones you could actually hold.",
+ "clarity, decision, reality check, sobering up",
+ "The smoke clears and you can finally choose among real things."],
+[0,-1,"walking away, disillusionment, seeking deeper meaning",
+ "You are leaving something that looked full but felt empty. The search behind it is real.",
+ "fear of leaving, staying from habit, aimless drifting, returning",
+ "You know you should go and you stay anyway, or you wander without knowing why."],
+[2,-1,"contentment, satisfaction, wish fulfilled, gratitude",
+ "What you wished for is within reach. Enjoy it without apology.",
+ "dissatisfaction, smugness, greed, hollow success",
+ "You have what you asked for and it does not feel the way you expected."],
+[2,-1,"harmony, family, lasting happiness, fulfilment",
+ "Emotional completion, a home in the fullest sense. Love that is steady and shared.",
+ "broken home, disharmony, mismatched values, strained family",
+ "The picture of happiness has a crack in it. Values or expectations do not match."],
+[1,-1,"curiosity, tender message, creative start, openness",
+ "A soft message or a creative spark. Something small and sincere asks for your attention.",
+ "emotional immaturity, moodiness, creative block, avoided feeling",
+ "A feeling is being avoided, or acted out like a child's."],
+[1,-1,"romance, charm, invitation, following the heart",
+ "An offer arrives with feeling attached. Follow it, but keep your eyes open.",
+ "unrealistic hopes, moodiness, jealousy, empty promises",
+ "Charm without follow-through. Beware promises larger than the person making them."],
+[1,-1,"compassion, emotional maturity, intuition, calm",
+ "You hold feeling without being drowned by it. Listen with the whole heart.",
+ "emotional insecurity, martyrdom, overwhelm, codependence",
+ "You are absorbing everyone's weather and neglecting your own."],
+[1,-1,"emotional balance, diplomacy, wisdom, generosity",
+ "Calm authority over your own tides. Be kind and be clear.",
+ "manipulation, volatility, coldness, suppressed feeling",
+ "Calm on the surface, a storm beneath. Feeling is being managed rather than felt."]
+];
+
+TD.wands = [
+[2,-1,"inspiration, new venture, spark, potential",
+ "A spark of pure drive. A new project asks to be lit.",
+ "delays, low motivation, false start, creative drought",
+ "The spark is there but damp. Start small, or wait for dry wood."],
+[1,-1,"planning, decisions, future vision, a bold first step",
+ "The world is in your hands and the question is how far you will go. Plan, then commit.",
+ "fear of the unknown, poor planning, playing it safe, no vision",
+ "You are staying in the castle because the horizon frightens you. A plan is not a journey."],
+[1,-1,"expansion, foresight, progress, waiting for ships",
+ "Work sent out into the world begins to return. Look further out.",
+ "delays, obstacles, lack of foresight, frustration",
+ "The ships are late. Check the plan, not only the weather."],
+[2,-1,"celebration, homecoming, stability, milestone",
+ "A milestone reached and shared. A good foundation, worth celebrating.",
+ "instability, conflict at home, unfinished celebration, lack of support",
+ "The foundation is shakier than it looks. Celebrate once the footing is solid."],
+[-1,0,"conflict, competition, disagreement, tension",
+ "Many voices, all shouting, nobody wrong enough to lose. Friction that sharpens or exhausts.",
+ "avoiding conflict, resolution, released tension, inner conflict",
+ "Either the quarrel is ending or it has gone inward. Choose your fights."],
+[2,-1,"victory, recognition, public success, confidence",
+ "Recognition earned. You are seen, and it is deserved.",
+ "ego, fall from favour, private doubt, delayed recognition",
+ "The applause is missing or hollow. Do not mistake attention for achievement."],
+[0,-1,"defence, perseverance, standing your ground",
+ "You hold the higher ground against many. Stay where you are; you are better placed than you feel.",
+ "overwhelm, giving up, exhaustion, yielding",
+ "You are tired of defending. Choose what is worth holding."],
+[1,-1,"speed, movement, swift action, messages",
+ "Everything accelerates. News and opportunities arrive fast.",
+ "delays, frustration, scattered energy, slowing down",
+ "Momentum stalls. Haste would only scatter it."],
+[0,-1,"resilience, persistence, last stand, boundaries",
+ "Battered but standing. One more push and you are through.",
+ "exhaustion, paranoia, giving up too soon, defensiveness",
+ "Weariness has made every shadow a threat. Rest before you decide the fight is lost."],
+[-1,0,"burden, overwork, responsibility, strain",
+ "You are carrying too much, and some of it is not yours. The finish is closer than the load suggests.",
+ "release of burden, delegation, collapse under load, letting go",
+ "Put something down, or it will put you down."],
+[1,-1,"enthusiasm, discovery, new ideas, exploration",
+ "A bright new interest, or word of a creative opportunity. Try things.",
+ "lack of direction, hasty ideas, procrastination, setbacks",
+ "Plenty of enthusiasm, no direction. Follow one spark at a time."],
+[1,-1,"adventure, passion, energy, impulsiveness",
+ "Heat and speed. Bold, charming, and unwise to ignore.",
+ "recklessness, burnout, delays, scattered fire",
+ "Fast and furious without finishing. Slow the horse."],
+[1,-1,"confidence, warmth, determination, charisma",
+ "Magnetic confidence. You are most effective when you are wholly yourself.",
+ "jealousy, insecurity, demands, burnout",
+ "The fire is turning on itself, as envy or as exhaustion."],
+[1,-1,"leadership, vision, boldness, honour",
+ "A leader with a vision and the nerve to enact it.",
+ "tyranny, impulsiveness, overbearing, unrealistic aims",
+ "Vision without listening. Power wielded as pressure."]
+];
+
+// Minor Arcana: Swords and Pentacles. Row order: Ace, 2..10, Page, Knight, Queen, King.
+// Row: [upTone, revTone, upKeywords, upLine, revKeywords, revLine]
+globalThis.TD = globalThis.TD || {};
+TD.swords = [
+[1,-1,"clarity, breakthrough, truth, a sharp mind",
+ "A clean cut through confusion. The truth, once said, is a relief.",
+ "confusion, clouded judgement, harsh words, mental block",
+ "Words used as weapons, or thoughts too tangled to cut through."],
+[0,0,"indecision, stalemate, blocked emotion, a hard choice",
+ "Blindfolded between two paths with blades crossed over the heart. You cannot decide because you are refusing to look.",
+ "information overload, the lifted blindfold, a forced decision",
+ "The blindfold slips and the choice can no longer be avoided."],
+[-2,0,"heartbreak, grief, painful truth, sorrow",
+ "A pierced heart and rain outside. This pain cannot be talked around, only gone through.",
+ "recovery, forgiveness, releasing pain, swallowed sorrow",
+ "The blades are being drawn out, slowly. Or the grief is being swallowed rather than felt."],
+[0,-1,"rest, restoration, contemplation, retreat",
+ "A pause that is not defeat. Rest is a form of repair.",
+ "restlessness, burnout, rest cut short, awakening",
+ "You are rising before you have healed, or you cannot rest at all."],
+[-1,0,"defeat, a hollow win, conflict, betrayed values",
+ "A win that costs more than it pays. Someone walks away wounded, and it may be you.",
+ "reconciliation, regret, moving on, lingering resentment",
+ "The fight is over and what remains is the aftertaste. Make peace or carry it."],
+[0,-1,"transition, moving on, calmer water, leaving trouble behind",
+ "A slow crossing toward calmer water. You carry the weight with you, but the far shore is quieter.",
+ "resisting change, stuck in trouble, unfinished business, rough passage",
+ "You are not ready to leave, or the water is rougher than hoped. The boat is still moving."],
+[-1,0,"deception, stealth, strategy, going it alone",
+ "Someone is taking a shortcut, you or another. Not everything here is as honest as it looks.",
+ "confession, conscience, getting caught, rethinking",
+ "The truth surfaces, or a plan is dropped in time."],
+[-1,1,"restriction, feeling trapped, self-imposed limits, helplessness",
+ "You are bound, but loosely. The ties are looser than the story you tell about them.",
+ "release, freedom, new perspective, self-acceptance",
+ "The binding falls away once you stop believing in it."],
+[-2,0,"anxiety, nightmares, worry, sleepless guilt",
+ "Three a.m. thoughts, magnified. The fear is larger than the facts.",
+ "release from anxiety, facing fears, hope, seeking help",
+ "Dawn is coming. Say the worry aloud and it shrinks."],
+[-2,0,"painful ending, rock bottom, betrayal, collapse",
+ "It is over, completely, and it hurts. But nothing can fall further, and the dawn on the horizon is real.",
+ "recovery, resisting an ending, survival, slow healing",
+ "You rise from the floor. The pain lingers, but the worst is behind you."],
+[0,-1,"curiosity, new ideas, vigilance, truth-seeking",
+ "A sharp, curious mind and a question that will not wait. Look before you leap.",
+ "gossip, hasty words, cynicism, deception",
+ "Speaking before thinking, or quick words that wound."],
+[0,-1,"ambition, action, directness, speed of thought",
+ "Charging in with an idea. Fast, honest, and not always kind.",
+ "impatience, aggression, recklessness, scattered thoughts",
+ "Words and actions outrun judgement. Pause before the charge."],
+[1,-1,"clear boundaries, perception, independence, honesty",
+ "Clear sight and clear lines. Honest, not cruel.",
+ "bitterness, coldness, cruelty, harsh judgement",
+ "Clarity gone cold. Truth used to keep people at a distance."],
+[1,-1,"intellect, authority, truth, ethical judgement",
+ "Reason and principle at the helm. Decide by what is true, not by what is comfortable.",
+ "manipulation, abuse of authority, cold logic, tyranny",
+ "Logic used as a weapon. Authority without compassion."]
+];
+
+TD.pentacles = [
+[2,-1,"opportunity, prosperity, new venture, manifestation",
+ "A real, tangible beginning: an offer, a seed, a chance with substance.",
+ "missed opportunity, scarcity, bad investment, delays",
+ "An offer goes unseen or unfunded. Check the terms before the dream."],
+[0,-1,"balance, adaptability, juggling priorities, flux",
+ "Two things in the air and a rhythm to keep. You are managing more than you let on.",
+ "overwhelm, disorganisation, dropped balls, imbalance",
+ "Something will fall. Choose which, instead of letting chance choose."],
+[1,-1,"collaboration, craft, teamwork, skill recognised",
+ "Good work, built with others. Your craft is noticed.",
+ "poor teamwork, mediocrity, misalignment, working alone",
+ "The pieces do not fit. Either the standards or the people need to be aligned."],
+[0,0,"security, control, saving, possessiveness",
+ "You are holding tight to what you have. Safety is real, and so is the cost of gripping.",
+ "generosity, release, insecurity, overspending",
+ "The grip loosens, through generosity or through loss."],
+[-1,1,"hardship, loss, isolation, poverty of spirit",
+ "Out in the cold, passing a lit window. Help is closer than your pride lets you see.",
+ "recovery, charity, finding help, end of hardship",
+ "A door opens. Accept the warmth."],
+[1,-1,"generosity, charity, giving and receiving, fairness",
+ "Resources move fairly between people. Give, and be willing to receive.",
+ "debt, strings attached, one-sided giving, power imbalance",
+ "Gifts with strings, or favours kept in a ledger."],
+[0,-1,"patience, long-term investment, assessment, perseverance",
+ "You have planted and you are waiting. Do not dig up the seeds to check on them.",
+ "impatience, poor returns, wasted effort, reassessment",
+ "The harvest is not matching the work. Reconsider what you are growing."],
+[1,-1,"craftsmanship, diligence, skill-building, dedication",
+ "Patient, repeated work that makes you excellent. This is how mastery is built.",
+ "perfectionism, uninspired work, shortcuts, lack of focus",
+ "Going through the motions, or polishing something that should have shipped."],
+[2,-1,"independence, self-sufficiency, luxury, reward for effort",
+ "Comfort that you built. Enjoy what your own work has made.",
+ "over-reliance on status, financial setback, hustle without joy",
+ "Independence has become isolation, or the comfort is only a surface."],
+[2,-1,"legacy, wealth, family, long-term success",
+ "Foundations that last beyond you. Stability other people can stand on.",
+ "financial failure, family disputes, fragile foundations, short-term thinking",
+ "The legacy is shaky, through arguments over inheritance or a foundation built too fast."],
+[1,-1,"ambition, study, new skills, opportunity",
+ "A student's focus. A practical opportunity to learn and build.",
+ "lack of progress, procrastination, impractical plans, a missed chance",
+ "Dreaming without doing. Pick one practical step."],
+[1,-1,"reliability, hard work, steady progress, patience",
+ "Slow, certain, dependable. You get there by not stopping.",
+ "stagnation, boredom, perfectionism, inertia",
+ "Steady has turned to stuck. Routine is choking the work."],
+[1,-1,"nurturing, practicality, abundance, comfort",
+ "Generous, grounded, resourceful. You make a home wherever you are.",
+ "neglect, self-neglect, smothering, financial insecurity",
+ "Care has turned into worry, or work has crowded out rest."],
+[2,-1,"prosperity, security, leadership, discipline",
+ "Wealth in the broadest sense: steady, earned, shared.",
+ "greed, stubbornness, materialism, financial recklessness",
+ "Security valued above all else, or recklessly spent."]
+];
+
+// Context libraries: emotions, topics, spreads, reader voice, cold-reading probes.
+// Template tokens: {name} {question} {emotion} {noun} {subject} {topic}
+globalThis.TD = globalThis.TD || {};
+
+TD.emotions = [
+  { id: "uncertain", label: "Uncertain", noun: "uncertainty", tension: 0.35,
+    echo: "Uncertain. It is the most honest word anyone brings to this table." },
+  { id: "anxious", label: "Anxious", noun: "anxiety", tension: 0.55,
+    echo: "Anxious. Then we will go slowly, and I will not ask your hands to be steady." },
+  { id: "hopeful", label: "Hopeful", noun: "hope", tension: 0.2,
+    echo: "Hopeful. Good. Hope is a kind of attention, and the cards respond to attention." },
+  { id: "grieving", label: "Grieving", noun: "grief", tension: 0.5,
+    echo: "Grieving. You can set that down here for a while. The cards will not mind its weight." },
+  { id: "angry", label: "Angry", noun: "anger", tension: 0.6,
+    echo: "Angry. Anger is information. Let us see what it is guarding." },
+  { id: "lonely", label: "Lonely", noun: "loneliness", tension: 0.45,
+    echo: "Lonely. You are not the first to sit in that chair, and you will not be the last." },
+  { id: "curious", label: "Curious", noun: "curiosity", tension: 0.25,
+    echo: "Curious. The best state for this work. Ask, and do not flinch at the answer." }
+];
+
+// Each topic: keywords to detect in the question, and phrases the reader uses.
+TD.topics = [
+  { id: "work", phrase: "the work you are building",
+    words: ["studio", "business", "startup", "company", "career", "job", "work", "project", "app", "game", "money", "income", "launch", "succeed", "success", "client"] },
+  { id: "love", phrase: "matters of the heart",
+    words: ["love", "partner", "relationship", "boyfriend", "girlfriend", "husband", "wife", "marriage", "ex", "crush", "dating", "heart", "romance"] },
+  { id: "choice", phrase: "this decision",
+    words: ["should i", "decision", "decide", "choose", "choice", "leave", "stay", "move", "crossroad", "option", "quit", "path"] },
+  { id: "family", phrase: "the people who raised you, or whom you raise",
+    words: ["family", "mother", "father", "parents", "mom", "dad", "brother", "sister", "child", "son", "daughter"] },
+  { id: "health", phrase: "your healing",
+    words: ["health", "heal", "sick", "body", "recover", "illness"] },
+  { id: "self", phrase: "your own direction",
+    words: ["myself", "purpose", "happy", "life", "direction", "meaning", "future", "who am i", "lost"] }
+];
+// Nouns that read naturally as "your X" in the reader's voice.
+TD.ownable = ["studio", "business", "startup", "company", "career", "job", "project", "app", "game", "relationship", "marriage", "family", "health"];
+
+TD.spreads = {
+  three: {
+    id: "three", name: "Three Cards", sub: "Past, Present, Future", count: 3,
+    grid: { cols: 3, rows: 1 },
+    positions: [
+      { key: "past", label: "Past", meaning: "What shaped this", intro: "Behind you, where this began", c: 1, r: 1 },
+      { key: "present", label: "Present", meaning: "Where you stand now", intro: "Here, in the room with us, the heart of it", c: 2, r: 1 },
+      { key: "future", label: "Future", meaning: "Where the road leads", intro: "Ahead, if the road is walked as it is now", c: 3, r: 1 }
+    ]
+  },
+  celtic: {
+    id: "celtic", name: "Celtic Cross", sub: "Ten cards, full picture", count: 10,
+    grid: { cols: 4, rows: 4 },
+    positions: [
+      { key: "heart", label: "The Heart", meaning: "The situation as it stands", intro: "At the centre, the heart of the matter", c: 2, r: 2 },
+      { key: "crossing", label: "The Crossing", meaning: "What challenges or crosses you", intro: "Laid across it, the thing that opposes or tests", c: 2, r: 2, cross: true },
+      { key: "root", label: "The Root", meaning: "The foundation beneath it", intro: "Beneath everything, the root", c: 2, r: 3 },
+      { key: "past", label: "Fading Past", meaning: "What is leaving", intro: "Behind you, fading", c: 1, r: 2 },
+      { key: "crown", label: "The Crown", meaning: "What you aim at", intro: "Above, what you reach toward", c: 2, r: 1 },
+      { key: "near", label: "Near Future", meaning: "What approaches", intro: "Just ahead, what approaches", c: 3, r: 2 },
+      { key: "self", label: "How You Stand", meaning: "Your stance and attitude", intro: "In the staff, how you carry yourself", c: 4, r: 4 },
+      { key: "world", label: "Surroundings", meaning: "The people and forces around you", intro: "Around you, the world pressing in", c: 4, r: 3 },
+      { key: "hopes", label: "Hopes and Fears", meaning: "What you want and dread, often the same thing", intro: "Close to the bone, your hopes and your fears, which are often one thing", c: 4, r: 2 },
+      { key: "outcome", label: "Outcome", meaning: "Where it settles if nothing changes", intro: "And at the top of the staff, where it settles", c: 4, r: 1 }
+    ]
+  }
+};
+
+// Reader reactions by emotional tier of the revealed card (orientation already applied).
+TD.reactions = {
+  "2": ["Ah... there it is. Light.", "Mm. Look at that. That one arrives like a window opening.", "Oh, that is a good one. I did not expect it to come so soon."],
+  "1": ["Mm. That is encouraging.", "Good. There is steadiness in that.", "That one settles the room a little."],
+  "0": ["Hm. This one is not so easy to read at a glance.", "Interesting. This card cuts both ways.", "I will need a moment with this one."],
+  "-1": ["Ah... I see.", "Mm. That one has weight to it.", "Yes... I thought something like this might come."],
+  "-2": ["...Oh.", "I will not soften this one. Not to you.", "The candle just flinched. Did you see?"]
+};
+
+TD.voice = {
+  greet: [
+    "Come in. Close the door against the weather.",
+    "Sit. The chair is warmer than it looks.",
+    "I am Madame Oriel. The cards call me when someone is about to ask a question they already half-know the answer to."
+  ],
+  askName: "What shall I call you? A first name is enough. Or nothing, if you prefer.",
+  askQuestion: "Now. What have you come to ask the cards? Say it plainly, or leave it vague if the words will not form.",
+  askEmotion: "And before we begin, how do you arrive tonight? The cards listen to the one holding them.",
+  askSpread: "How deeply shall we look?",
+  // Shuffle opening, keyed by how long the player held the deck (ms).
+  holdShort: [
+    "A light touch. You do not trust this yet. That is allowed.",
+    "Quick hands. You want answers more than you want to wait for them."
+  ],
+  holdMid: [
+    "There. You are settling. I can feel the deck warming against your hands.",
+    "Steady. You gave it just enough time to remember you."
+  ],
+  holdLong: [
+    "You hold on a long time. People who hold on that long are usually afraid of losing something.",
+    "So much patience. Or so much fear. The cards cannot tell them apart, and neither can I."
+  ],
+  shuffleAtmos: [
+    "The rain has found the window. Do you hear it? Listen to it while the cards move.",
+    "The candle leans toward you. It does that when a question is honest.",
+    "Think of the question. Not the words. The weight of it.",
+    "Seventy-eight faces, and every one of them turned away. Good. They are waiting for you.",
+    "Somewhere in this deck, one card has been waiting since before you walked in."
+  ],
+  pickPrompt: "Now they are spread. Move your hand over them slowly. When the air changes, when one of them seems to pull, stop there and choose.",
+  pickAck: [
+    "That one. Yes.",
+    "Mm. You did not hesitate. Interesting.",
+    "Hold on to that feeling.",
+    "Good. Do not look back at the others.",
+    "Yes... I felt that one move."
+  ],
+  pickDone: "That is all of them. Do not touch them yet. Let them settle into the cloth.",
+  turn: [
+    "I will turn them one at a time.",
+    "Watch the candle. It tells me when to speak."
+  ],
+  closing: [
+    "That is all the cards have to say tonight.",
+    "Take it home slowly. Do not act on it tonight. Let it work on you."
+  ]
+};
+
+// Cold-reading probes. 'fits' lists the tone tiers the probe suits.
+// Flow: statement -> validation question -> Yes/No branch.
+TD.probes = {
+  past: [
+    { id: "past_promise", fits: [-2, -1, 0, 1, 2],
+      statement: "Something began with real promise, and it has not unfolded the way you pictured.",
+      ask: "Does that echo a recent struggle in your life?",
+      yes: ["Yes. I thought so. That is the weight I felt as the card turned.", "Hold that. It matters for what follows."],
+      no: ["Then perhaps it is older than you think, or it has not yet put on a name.", "Cards often speak of the root before the branch. Keep it with you anyway."] },
+    { id: "past_carry", fits: [-2, -1, 0],
+      statement: "You have been strong for other people, and very few of them asked how you were doing.",
+      ask: "Is there someone you have been carrying?",
+      yes: ["I felt it. It sat at the edge of the card like a coat left on a chair.", "You are allowed to put them down for the length of a reading."],
+      no: ["Then the one you have been carrying may be yourself, in an earlier version.", "That is often the heaviest to lift."] },
+    { id: "past_choice", fits: [0, 1, 2],
+      statement: "A decision you made not long ago still visits you in quiet hours.",
+      ask: "Does that ring true?",
+      yes: ["Mm. It has not finished with you yet.", "Do not argue with it. Hear what it wants first."],
+      no: ["Then it may be a decision you have not made yet, which still sends its shadow backward.", "Time is looser at this table than outside."] }
+  ],
+  present: [
+    { id: "present_tired", fits: [-2, -1, 0],
+      statement: "You are tired in a way sleep has not fixed.",
+      ask: "Is that so?",
+      yes: ["I thought so. It is in how you came through the door.", "Tired from deciding, not from doing. Those are different weights."],
+      no: ["Then the tiredness is not in the body. It is in the waiting.", "Waiting wears down a person faster than work."] },
+    { id: "present_knows", fits: [-1, 0, 1, 2],
+      statement: "Part of you already knows what it wants, and the rest of you is negotiating with fear.",
+      ask: "Am I close?",
+      yes: ["I do not need to be right often. I only need to be listening.", "Notice which part of you answered first."],
+      no: ["Then perhaps the want is buried deeper than the fear, and the fear is standing guard over nothing.", "We will see which of us is right by the end."] },
+    { id: "present_person", fits: [-2, -1, 0, 1],
+      statement: "There is one person whose opinion weighs on this more than you admit.",
+      ask: "Is there someone?",
+      yes: ["Mm. Of course. We rarely decide alone, even when we pretend we do.", "Whatever they would say is not what the cards say."],
+      no: ["Then the voice may be an old one, from a parent or a teacher, still talking in your head.", "That is a person too, in the ways that matter."] }
+  ],
+  // Used in the Celtic Cross at the crossing and at hopes and fears.
+  deep: [
+    { id: "deep_afraid", fits: [-2, -1, 0, 1, 2],
+      statement: "What you hope for and what you fear are the same thing wearing two coats.",
+      ask: "Does that land?",
+      yes: ["It always does when it is true.", "That is the knot. We will not cut it, only look at it."],
+      no: ["Then one of them has not yet been admitted. Let it stay quiet for now.", "It will speak when it is ready."] }
+  ],
+  // A two-option closing question after the final card of the three-card spread.
+  outcome: {
+    id: "outcome_feel",
+    ask: "When you look at that last card, what do you feel?",
+    options: [
+      { id: "comfort", label: "It comforts me",
+        say: ["Then trust that. The body often reads the cards before the mind does.", "Comfort is not a promise, but it is a direction."] },
+      { id: "fear", label: "It frightens me",
+        say: ["Fear is not a verdict. It is a sign that something there matters to you.", "Frightening cards are often the ones that ask for the most courage, not the most dread."] }
+    ]
+  },
+  // Said when the player says No twice. The reader becomes more careful.
+  recover: [
+    "You push back. Good. Do not take a stranger's word over your own.",
+    "I will guess less and let the cards speak more plainly."
+  ],
+  // Said when the player said Yes twice or more.
+  rapport: [
+    "You nodded where it mattered. That means we are both listening to the same thing.",
+    "Something at this table is aligned tonight."
+  ]
+};
+
+// Practical counsel keyed by the suit of the final (outcome) card.
+TD.counsel = {
+  Cups: "Ask what your heart would regret leaving unsaid, then say it to someone who can hear.",
+  Wands: "Take one small, visible step within three days. Fire answers to motion, not to thought.",
+  Swords: "Write the truth of the matter in one sentence, and do not edit it for kindness.",
+  Pentacles: "Count what you actually have before you decide. Numbers are calmer than fears.",
+  None: "Something larger than this single choice is moving with you. Let it set the pace."
+};
+
+// Human touches: small hesitations, callbacks to what the player said earlier, and an unsure answer.
+TD.voice.murmurs = [
+  "Hm.",
+  "Mm... give me a moment with this one.",
+  "Let me look at that again.",
+  "Yes... yes, I see it.",
+  "Wait. The candle moved. Let me listen."
+];
+TD.voice.callbackYes = [
+  "You nodded earlier, so this will not be news to you.",
+  "You said yes before. Keep that in your hands while I say this."
+];
+TD.voice.callbackNo = [
+  "You pushed back earlier, and I have not forgotten it. Tell me if this one misses too.",
+  "I may have been off a moment ago. Let us see if this one fits better."
+];
+TD.voice.ready = "Take a breath. Tell me when you are ready, and I will turn them.";
+TD.probes.unsure = [
+  "Unsure is an honest answer. Hold it lightly. It may come into focus later.",
+  "Fair. Some things only recognise themselves in hindsight."
+];
+
+// Multi-card combination rules. A rule inspects the whole draw, not single cards.
+// test(d) returns a bind object { A, B } (cards) or null. d exposes:
+//   d.cards, d.n, d.find(name), d.findAny([names]), d.byKey(key), d.count(fn)
+// override:true rules replace the generic per-card lines for the cards they bind.
+// {A} / {B} expand to the slot label (lowercase). {A.name} {A.orient} also work.
+globalThis.TD = globalThis.TD || {};
+
+const _pair = (n1, others) => d => {
+  const A = d.find(n1); if (!A) return null;
+  const B = d.findAny(others); if (!B || B === A) return null;
+  return { A, B };
+};
+
+TD.combos = [
+  { id: "heartbreak", flag: "trigger_heartbreak_arc", priority: 100, override: true, mood: "heavy",
+    rule: "The Lovers + Three of Swords anywhere in the draw",
+    test: d => { const A = d.find("The Lovers"), B = d.find("Three of Swords"); return A && B ? { A, B } : null; },
+    lines: [
+      "Wait. Wait... I need to stop on this.",
+      "{A.name} in your {A}... and {B.name} in your {B}. Together they are telling one story, and it is not a gentle one.",
+      "A choice of the heart that ends in a pierced one. This is not only about {subject}. Somewhere beneath it there is a person, or the memory of one, and the ache is still in the room.",
+      "I am not saying it is hopeless. I am saying the hurt is real, {name}, and you are not imagining it."
+    ] },
+  { id: "collapse", flag: "trigger_collapse_arc", priority: 95, override: true, mood: "heavy",
+    rule: "The Tower + Ten of Swords",
+    test: d => { const A = d.find("The Tower"), B = d.find("Ten of Swords"); return A && B ? { A, B } : null; },
+    lines: [
+      "...Two of the hardest cards in the deck, and they came together.",
+      "{A.name} and {B.name}. Something does not merely end here. It ends loudly, and it ends all at once.",
+      "I will say it once, plainly: what you are afraid of losing may already be lost. What the cards ask is whether you will stand in the wreckage or walk out of it.",
+      "Look at the dawn on the Ten. It is real. It is just far."
+    ] },
+  { id: "rebirth", flag: "trigger_rebirth_arc", priority: 85, mood: "bright",
+    rule: "(Death or The Tower) + (The Star, The Sun or The World)",
+    test: d => { const A = d.findAny(["Death", "The Tower"]), B = d.findAny(["The Star", "The Sun", "The World"]); return A && B ? { A, B } : null; },
+    lines: [
+      "Now this pairing I like. {A.name} and {B.name} in the same draw.",
+      "Something must be taken down, and what grows after it is better than what stood before. The ending in your {A} is not the end of the story. It is the clearing."
+    ] },
+  { id: "crossroads", flag: "trigger_crossroads_arc", priority: 80, mood: "still",
+    rule: "Two of Swords + (Seven of Cups, Eight of Cups, The Lovers, Two of Wands, Wheel of Fortune or The Hanged Man)",
+    test: _pair("Two of Swords", ["Seven of Cups", "Eight of Cups", "The Lovers", "Two of Wands", "Wheel of Fortune", "The Hanged Man"]),
+    lines: [
+      "There. That is the crossroads, drawn twice over.",
+      "{A.name} in your {A} and {B.name} in your {B}. The mind refuses to choose while the heart keeps counting the options.",
+      "The cards agree with what you told me about {subject}. The difficulty is not that every road is bad. It is that you have not yet let yourself look at one of them for more than a breath."
+    ] },
+  { id: "fog", flag: "trigger_fog_arc", priority: 75, mood: "still",
+    rule: "The Moon + (High Priestess, Hermit, Seven of Cups, Seven of Swords, Eight of Swords or Nine of Swords)",
+    test: _pair("The Moon", ["The High Priestess", "The Hermit", "Seven of Cups", "Seven of Swords", "Eight of Swords", "Nine of Swords"]),
+    lines: [
+      "{A.name} beside {B.name}. Fog on top of fog.",
+      "You cannot see clearly right now, and the cards are asking you not to pretend you can. Do not decide in this light. Wait for morning."
+    ] },
+  { id: "temptation", flag: "trigger_temptation_arc", priority: 70, mood: "heavy",
+    rule: "The Devil + (The Lovers, Seven of Cups, Seven of Swords or Four of Pentacles)",
+    test: _pair("The Devil", ["The Lovers", "Seven of Cups", "Seven of Swords", "Four of Pentacles"]),
+    lines: [
+      "{A.name} next to {B.name}. Something here is very attractive and not entirely free.",
+      "Ask yourself what the shiny thing costs, and who is holding the other end of the chain."
+    ] },
+  { id: "leap", flag: "trigger_leap_arc", priority: 70, mood: "bright",
+    rule: "The Fool + (Ace of Wands, Ace of Pentacles, Eight of Wands, Wheel of Fortune, The Magician or The Chariot)",
+    test: _pair("The Fool", ["Ace of Wands", "Ace of Pentacles", "Eight of Wands", "Wheel of Fortune", "The Magician", "The Chariot"]),
+    lines: [
+      "{A.name} with {B.name}. The cards are not subtle here.",
+      "This is a leap with a tailwind. Not a promise of landing, but the odds of the jump being worthwhile are better than your fear believes."
+    ] },
+  { id: "triumph", flag: "trigger_triumph_arc", priority: 70, mood: "bright",
+    rule: "The Sun + (The World, Six of Wands, Ten of Pentacles, Nine of Cups, Ten of Cups or The Star)",
+    test: _pair("The Sun", ["The World", "Six of Wands", "Ten of Pentacles", "Nine of Cups", "Ten of Cups", "The Star"]),
+    lines: [
+      "{A.name} and {B.name}. I have to smile. The cards are generous tonight.",
+      "Warmth and completion arriving together. Do not wave it away because it seems too easy. Some things are simply good."
+    ] },
+  { id: "exhaustion", flag: "trigger_exhaustion_arc", priority: 60, mood: "heavy",
+    rule: "Two or more of: Ten of Wands, Nine of Wands, Nine of Swords, Four of Swords, Five of Pentacles, Seven of Wands",
+    test: d => {
+      const set = ["Ten of Wands", "Nine of Wands", "Nine of Swords", "Four of Swords", "Five of Pentacles", "Seven of Wands"];
+      const hits = d.cards.filter(c => set.includes(c.name));
+      return hits.length >= 2 ? { A: hits[0], B: hits[1] } : null;
+    },
+    lines: [
+      "{A.name} and {B.name}. The same message from two directions: you are depleted.",
+      "Before any decision about {subject}, rest has to be on the list. A tired mind chooses badly and calls it fate."
+    ] },
+  { id: "fate", flag: "trigger_fate_arc", priority: 50, mood: "still",
+    rule: "Majors make up 60% or more of the draw",
+    test: d => {
+      const m = d.cards.filter(c => c.arcana === "Major");
+      return m.length >= Math.ceil(d.n * 0.6) ? { A: m[0], B: m[1] } : null;
+    },
+    lines: [
+      "Look at how many of the great cards came. Larger forces than you are in this question.",
+      "When the major cards cluster, it is rarely only about {subject}. The question is a doorway to something older."
+    ] },
+  { id: "rising", flag: "trigger_rising_arc", priority: 45, mood: "bright",
+    rule: "Tone of the final card is at least 2 steps better than the Past card",
+    test: d => {
+      const a = d.byKey("past"), b = d.byKey("outcome") || d.byKey("future");
+      return a && b && b.tone - a.tone >= 2 ? { A: a, B: b } : null;
+    },
+    lines: [
+      "Notice the slope of it. From your {A} to your {B}, the cards climb. This story improves as it goes."
+    ] },
+  { id: "falling", flag: "trigger_falling_arc", priority: 45, mood: "heavy",
+    rule: "Tone of the final card is at least 2 steps worse than the Past card",
+    test: d => {
+      const a = d.byKey("past"), b = d.byKey("outcome") || d.byKey("future");
+      return a && b && a.tone - b.tone >= 2 ? { A: a, B: b } : null;
+    },
+    lines: [
+      "Notice the slope. From your {A} to your {B}, the cards darken. This is a warning, not a sentence. A warning exists so the road can be changed."
+    ] },
+  { id: "inward", flag: "trigger_inward_arc", priority: 30, mood: "still",
+    rule: "Every card reversed",
+    test: d => d.n >= 3 && d.cards.every(c => c.rev) ? { A: d.cards[0], B: d.cards[d.n - 1] } : null,
+    lines: [
+      "Every card is turned. All of them, upside down.",
+      "That happens when the energy has nowhere outward to go. Everything is happening inside you right now, and very little is visible from outside."
+    ] },
+  { id: "open", flag: "trigger_open_arc", priority: 30, mood: "bright",
+    rule: "Every card upright",
+    test: d => d.n >= 3 && d.cards.every(c => !c.rev) ? { A: d.cards[0], B: d.cards[d.n - 1] } : null,
+    lines: [
+      "Every card upright. Nothing hidden, nothing held back.",
+      "When the cards all face you like that, the situation is closer to the surface than you think. You may already be in the middle of the answer."
+    ] },
+  { id: "suit", flag: "trigger_suit_arc", priority: 20, mood: "still",
+    rule: "Two or more cards from the same suit (half the draw in a Celtic Cross)",
+    test: d => {
+      const need = d.n === 3 ? 2 : Math.ceil(d.n * 0.5);
+      for (const s of ["Cups", "Wands", "Swords", "Pentacles"]) {
+        const hits = d.cards.filter(c => c.suit === s);
+        if (hits.length >= need) return { A: hits[0], B: hits[1], suit: s };
+      }
+      return null;
+    },
+    lines: d => {
+      const theme = { Cups: "feeling", Wands: "drive and will", Swords: "the mind and truth", Pentacles: "the practical and material world" };
+      return ["The suit of {suit} keeps returning. This question lives in " + theme[d.suit] + "."];
+    } }
+];
+
+TD.comboHints = [
+  "Hold that one in mind. I want to see what lands beside it before I say what it means.",
+  "Mm. I will come back to this. Something else in the layout is talking to it.",
+  "Not yet. Let me see the others first."
+];
+
+// Tarot engine: deck, entropy, shuffle, spreads, interpretation, combos, script builder.
+// No DOM access. Runs in the browser and in Node (for tests).
+(function () {
+  const TD = globalThis.TD;
+
+  /* ---------------------------------------------------------------- DECK */
+  const RANKS = ["Ace", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Page", "Knight", "Queen", "King"];
+  const SUITS = ["Cups", "Wands", "Swords", "Pentacles"];
+  const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  const kw = s => s.split(",").map(x => x.trim()).filter(Boolean);
+  const pad = n => String(n).padStart(2, "0");
+
+  TD.TIERS = { "2": "radiant", "1": "favourable", "0": "ambiguous", "-1": "hard", "-2": "catastrophic" };
+
+  TD.buildDeck = function () {
+    const deck = [];
+    TD.major.forEach((r, i) => {
+      const [name, uT, rT, uK, uL, rK, rL] = r;
+      deck.push({
+        id: "maj_" + pad(i), number: i, name, arcana_type: "Major", suit: "None",
+        upright_meaning: { keywords: kw(uK), text: uL },
+        reversed_meaning: { keywords: kw(rK), text: rL },
+        tone: { upright: uT, reversed: rT },
+        visual_asset_path: `assets/cards/major/${pad(i)}_${slug(name)}.png`
+      });
+    });
+    SUITS.forEach(suit => {
+      TD[suit.toLowerCase()].forEach((r, i) => {
+        const [uT, rT, uK, uL, rK, rL] = r;
+        const name = `${RANKS[i]} of ${suit}`;
+        deck.push({
+          id: suit.toLowerCase() + "_" + pad(i + 1), number: i + 1, name, arcana_type: "Minor", suit,
+          upright_meaning: { keywords: kw(uK), text: uL },
+          reversed_meaning: { keywords: kw(rK), text: rL },
+          tone: { upright: uT, reversed: rT },
+          visual_asset_path: `assets/cards/${suit.toLowerCase()}/${pad(i + 1)}_${slug(name)}.png`
+        });
+      });
+    });
+    return deck;
+  };
+
+  /* ------------------------------------------------------------- ENTROPY */
+  function sfc32(a, b, c, d) {
+    return function () {
+      a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
+      let t = (a + b) | 0;
+      a = b ^ (b >>> 9);
+      b = (c + (c << 3)) | 0;
+      c = (c << 21 | c >>> 11);
+      d = (d + 1) | 0;
+      t = (t + d) | 0;
+      c = (c + t) | 0;
+      return t >>> 0;
+    };
+  }
+  // Unbiased integer in [0, max) by rejection sampling over a 32-bit source.
+  function randInt(max, u32) {
+    const lim = Math.floor(4294967296 / max) * max;
+    let x;
+    do { x = u32(); } while (x >= lim);
+    return x % max;
+  }
+  function fisherYates(arr, u32) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = randInt(i + 1, u32);
+      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+  function cryptoBit() {
+    try {
+      const c = globalThis.crypto;
+      if (c && c.getRandomValues) return c.getRandomValues(new Uint8Array(1))[0] & 1;
+    } catch (e) { /* fall through */ }
+    return Math.random() < 0.5 ? 1 : 0;
+  }
+
+  class EntropyPool {
+    constructor() {
+      this.h = [1779033703, 3144134277, 1013904242, 2773480762];
+      this.counter = 0;
+      this.holdMs = null;
+      this.clicks = [];
+      this.moves = 0;
+      this.recent = [];
+      this.absorbed = 0;
+    }
+    _abs(k) {
+      let [h1, h2, h3, h4] = this.h;
+      h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+      h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+      h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+      h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+      this.h = [h1, h2, h3, h4];
+      this.absorbed++;
+    }
+    num(v) {
+      const i = Math.floor(v);
+      this._abs(i | 0);
+      this._abs(Math.floor((v - i) * 4294967296) | 0);
+    }
+    move(x, y, t) {
+      this.moves++;
+      this.num(x); this.num(y); this.num(t);
+      this.recent.push({ k: "move", x: Math.round(x), y: Math.round(y) });
+      if (this.recent.length > 8) this.recent.shift();
+    }
+    click(x, y, t, label) {
+      this.num(x); this.num(y); this.num(t);
+      this.clicks.push({ x: Math.round(x), y: Math.round(y), label: label || "" });
+    }
+    hold(ms, t) {
+      this.holdMs = Math.round(ms);
+      this.num(ms); this.num(t);
+    }
+    _digest(label, peek) {
+      let [h1, h2, h3, h4] = this.h;
+      const s = label + ":" + (peek ? this.counter : this.counter++);
+      for (let i = 0; i < s.length; i++) {
+        const k = s.charCodeAt(i);
+        h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+        h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+        h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+        h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+      }
+      h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+      h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+      h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+      h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+      h1 ^= (h2 ^ h3 ^ h4); h2 ^= h1; h3 ^= h1; h4 ^= h1;
+      return [h1 >>> 0, h2 >>> 0, h3 >>> 0, h4 >>> 0];
+    }
+    seedHex() {
+      return this._digest("peek", true).map(n => n.toString(16).padStart(8, "0")).join("");
+    }
+    // A fresh generator derived from everything absorbed so far.
+    fork(label) {
+      const [a, b, c, d] = this._digest(label);
+      const u32 = sfc32(a, b, c, d);
+      for (let i = 0; i < 12; i++) u32();
+      return {
+        u32,
+        float: () => u32() / 4294967296,
+        int: max => randInt(max, u32),
+        pick: arr => arr[randInt(arr.length, u32)],
+        // Orientation bit: system true-random XOR input-seeded bit.
+        bit: () => (cryptoBit() ^ (u32() & 1)) === 1
+      };
+    }
+  }
+  TD.EntropyPool = EntropyPool;
+  TD.fisherYates = fisherYates;
+  TD.randInt = randInt;
+
+  /* --------------------------------------------------------------- STATE */
+  TD.newState = function () {
+    return {
+      name: "", question: "", emotionId: "uncertain", spreadId: "three", demo: false,
+      pool: new EntropyPool(), deck: TD.buildDeck(), shuffled: null, passes: 0,
+      picks: [], draw: [], combos: [], flags: {},
+      hits: 0, misses: 0, probeLog: [], outcomeFeel: null
+    };
+  };
+
+  TD.shuffle = function (state) {
+    const R = state.pool.fork("shuffle");
+    const holdMs = state.pool.holdMs || 0;
+    state.passes = Math.max(3, Math.min(9, 3 + Math.floor(holdMs / 700)));
+    const order = state.deck.slice();
+    for (let p = 0; p < state.passes; p++) fisherYates(order, R.u32);
+    state.shuffled = order;
+    return order;
+  };
+
+  // Called when the player clicks the card at fan position `index`.
+  TD.pickCard = function (state, index, x, y, t) {
+    state.pool.click(x, y, t, "pick:" + index);
+    const sp = TD.spreads[state.spreadId];
+    const slot = state.picks.length;
+    let card = state.shuffled[index], rev;
+    const R = state.pool.fork("orientation:" + index + ":" + slot);
+    rev = R.bit();
+    let forced = false;
+    if (state.demo && state.spreadId === "three") {
+      const plan = [["The Lovers", false], ["The Tower", true], ["Three of Swords", false]][slot];
+      card = state.deck.find(c => c.name === plan[0]); rev = plan[1]; forced = true;
+    }
+    const entry = { index, card, rev, forced, x: Math.round(x), y: Math.round(y), slot };
+    state.picks.push(entry);
+    return entry;
+  };
+
+  /* ------------------------------------------------------- INTERPRETATION */
+  TD.interpret = function (card, rev) {
+    const m = rev ? card.reversed_meaning : card.upright_meaning;
+    const tone = rev ? card.tone.reversed : card.tone.upright;
+    return { id: card.id, name: card.name, orientation: rev ? "Reversed" : "Upright",
+      keywords: m.keywords, text: m.text, tone, tier: TD.TIERS[String(tone)] };
+  };
+  TD.textBlock = (state, id, rev) => TD.interpret(state.deck.find(c => c.id === id), rev);
+
+  TD.makeDraw = function (state) {
+    const sp = TD.spreads[state.spreadId];
+    state.draw = state.picks.map((pk, i) => {
+      const it = TD.interpret(pk.card, pk.rev);
+      const pos = sp.positions[i];
+      return { slot: i, slotKey: pos.key, slotLabel: pos.label, pos, id: pk.card.id, name: pk.card.name,
+        arcana: pk.card.arcana_type, suit: pk.card.suit, rev: pk.rev, tone: it.tone, tier: it.tier,
+        keywords: it.keywords, text: it.text, card: pk.card };
+    });
+    return state.draw;
+  };
+
+  TD.drawApi = function (cards) {
+    return {
+      cards, n: cards.length,
+      find: n => cards.find(c => c.name === n) || null,
+      findAny: ns => cards.find(c => ns.includes(c.name)) || null,
+      byKey: k => cards.find(c => c.slotKey === k) || null,
+      count: f => cards.filter(f).length
+    };
+  };
+
+  /* -------------------------------------------------------------- CONTEXT */
+  TD.context = function (state) {
+    const emo = TD.emotions.find(e => e.id === state.emotionId) || TD.emotions[0];
+    const q = (state.question || "").trim();
+    const lower = q.toLowerCase();
+    let best = null, bestN = 0;
+    for (const t of TD.topics) {
+      const n = t.words.filter(w => new RegExp("\\b" + w.replace(/\s+/g, "\\s+") + "\\b").test(lower)).length;
+      if (n > bestN) { best = t; bestN = n; }
+    }
+    const topic = best || { id: "open", phrase: "what you carry" };
+    const own = TD.ownable.find(w => new RegExp("\\b" + w + "\\b").test(lower));
+    let subject;
+    if (own) subject = "your " + own;
+    else if (topic.id === "choice" || (emo.id === "uncertain" && topic.id === "open")) subject = "this crossroads";
+    else subject = topic.phrase;
+    return { name: (state.name || "").trim() || "friend", question: q || "what you could not put into words",
+      emotion: emo.label.toLowerCase(), noun: emo.noun, subject, topic: topic.phrase, topicId: topic.id, emo };
+  };
+
+  TD.fill = function (tpl, state, bind) {
+    bind = bind || {};
+    const c = TD.context(state);
+    return tpl.replace(/\{(\w+)(?:\.(\w+))?\}/g, (m, k, p) => {
+      const b = bind[k];
+      if (b && typeof b === "object" && b.name) {
+        if (p === "name") return b.name;
+        if (p === "orient") return b.rev ? "reversed" : "upright";
+        if (!p) return b.slotLabel.toLowerCase();
+      }
+      if (k === "suit" && bind.suit) return bind.suit;
+      if (!p && c[k] !== undefined && typeof c[k] === "string") return c[k];
+      return m;
+    });
+  };
+
+  /* --------------------------------------------------------------- COMBOS */
+  TD.evaluateCombos = function (state) {
+    const d = TD.drawApi(state.draw);
+    const found = [];
+    state.flags = {};
+    for (const rule of TD.combos) {
+      let bind = null;
+      try { bind = rule.test(d); } catch (e) { bind = null; }
+      state.flags[rule.flag] = !!bind;
+      if (bind) {
+        const lines = typeof rule.lines === "function" ? rule.lines(bind) : rule.lines;
+        found.push({ id: rule.id, flag: rule.flag, priority: rule.priority, override: !!rule.override,
+          mood: rule.mood, rule: rule.rule, bind, lines });
+      }
+    }
+    found.sort((a, b) => b.priority - a.priority);
+    state.combos = found;
+    return found;
+  };
+
+  /* ---------------------------------------------------------- SCRIPT KIT */
+  const S = {
+    say: (text, o) => Object.assign({ t: "say", text }, o || {}),
+    act: text => ({ t: "act", text }),
+    pause: ms => ({ t: "pause", ms }),
+    mood: (tension, o) => Object.assign({ t: "mood", tension }, o || {}),
+    lazy: fn => ({ t: "lazy", fn }),
+    flag: (name, value) => ({ t: "flag", name, value })
+  };
+  TD.S = S;
+  const tensionOf = tone => ({ "2": 0.1, "1": 0.25, "0": 0.42, "-1": 0.68, "-2": 0.95 })[String(tone)];
+
+  const TOPIC_REACT = {
+    work: "The work you are building has a pulse. I can feel it from here.",
+    love: "Matters of the heart. Of course. They arrive last and ask first.",
+    choice: "A decision. Those are the questions that keep people awake.",
+    family: "Family. Older than any other question we carry.",
+    health: "Healing. We will be gentle with it.",
+    self: "Your own direction. The oldest question there is.",
+    open: "You left it open. Sometimes that is the truest way to ask."
+  };
+  const BRIDGE = {
+    past: ["This is what shaped {subject}, whether or not you meant it to.", "This is the soil {subject} grew from."],
+    present: ["This is how {subject} feels from inside it, {name}. You told me you came {emotion}, and the card knows.", "This is where you stand, {name}. Your {noun} is not a flaw here. It is a reading."],
+    future: ["This is where {subject} leads if the road is walked as it is. Roads can be changed.", "That is the weather ahead, not a verdict."],
+    heart: ["This is {subject} at its centre, stripped of story."],
+    crossing: ["This is what presses against {subject}. Not an enemy. A test."],
+    root: ["This is what holds {subject} up from below, whether you see it or not."],
+    crown: ["This is what you are reaching toward, spoken or not."],
+    near: ["This arrives soon. Keep your eyes open for it."],
+    self: ["This is how you carry yourself through {subject}. Others see it before you do."],
+    world: ["This is the weather other people bring into {subject}."],
+    hopes: ["This is what you want and dread, {name}. Notice how close they sit."],
+    outcome: ["This is where it settles if nothing changes. Everything before it can still change."],
+    fading: ["This is leaving. Let it."]
+  };
+  const REV_HEAVY = [
+    "Turned this way, it does not weaken. It goes inward, and what would have broken loudly breaks quietly.",
+    "Reversed, it does not cancel the blow. It delays it, and delay makes it heavier."
+  ];
+
+  /* --------------------------------------------------------- INTRO SCRIPT */
+  TD.scriptIntro = function () {
+    const V = TD.voice;
+    return [
+      S.mood(0.22, { candle: 0.7 }),
+      S.pause(600),
+      S.say(V.greet[0]), S.pause(700),
+      S.say(V.greet[1]), S.pause(900),
+      S.say(V.greet[2]), S.pause(600),
+      S.say(V.askName),
+      { t: "input", id: "name", store: "name", placeholder: "Your name (optional)", optional: true, button: "Say it" },
+      S.lazy(st => st.name.trim()
+        ? [S.say("{name}. Good. A name that sounds like a person and not a title."), S.pause(500)]
+        : [S.say("No name, then. The cards do not need one."), S.pause(500)]),
+      S.say(V.askQuestion),
+      { t: "input", id: "question", store: "question", placeholder: "Type your question...", optional: true, button: "Ask",
+        chips: ["Will my studio succeed?", "Which road should I take?", "What is blocking me?", "What do I need to know about love?"] },
+      S.lazy(st => {
+        const c = TD.context(st);
+        const out = [];
+        if (st.question.trim()) {
+          out.push(S.act("She repeats the question under her breath, as if tasting it."));
+          out.push(S.pause(700));
+          out.push(S.say("“{question}”... mm."));
+        } else {
+          out.push(S.say("No question, only a feeling. Those are the ones the cards answer best."));
+        }
+        out.push(S.pause(500));
+        out.push({ t: "ai_react", fallback: [S.say(TOPIC_REACT[c.topicId] || TOPIC_REACT.open)] });
+        return out;
+      }),
+      S.pause(600),
+      S.say(V.askEmotion),
+      { t: "choose", id: "emotion", store: "emotionId", options: TD.emotions.map(e => ({ id: e.id, label: e.label })) },
+      S.lazy(st => {
+        const emo = TD.emotions.find(e => e.id === st.emotionId);
+        const out = [S.mood(emo.tension, { candle: 0.8 }), S.say(emo.echo)];
+        if (emo.id === "uncertain") {
+          out.push(S.pause(600));
+          out.push(S.say("A crossroads is not a failure of nerve. It is the place where a road gets chosen."));
+        }
+        return out;
+      }),
+      S.pause(600),
+      S.say(V.askSpread),
+      { t: "choose", id: "spread", store: "spreadId", options: [
+        { id: "three", label: "Three cards", sub: "Past, present, future" },
+        { id: "celtic", label: "Celtic Cross", sub: "Ten cards, the full picture" }] },
+      S.pause(500),
+      { t: "phase", name: "shuffle" }
+    ];
+  };
+
+  /* ------------------------------------------------------- SHUFFLE SCRIPT */
+  TD.scriptShuffle = function (state) {
+    const V = TD.voice, R = state.pool.fork("voice-shuffle"), h = state.pool.holdMs || 0;
+    const bucket = h < 1200 ? V.holdShort : h < 3200 ? V.holdMid : V.holdLong;
+    const atmos = V.shuffleAtmos.slice();
+    const a1 = atmos.splice(R.int(atmos.length), 1)[0];
+    const a2 = atmos.splice(R.int(atmos.length), 1)[0];
+    return [
+      S.mood(0.4, { weather: 0.45 }),
+      S.say(R.pick(bucket)), S.pause(800),
+      S.say(a1), S.mood(0.5, { weather: 0.6 }), S.pause(1000),
+      S.say(a2), S.pause(900),
+      S.act("The cards settle. She spreads them across the cloth, faces down."),
+      S.mood(0.4, { weather: 0.4 }), S.pause(700),
+      S.say(V.pickPrompt),
+      { t: "phase", name: "pick" }
+    ];
+  };
+
+  /* -------------------------------------------------------- READING SCRIPT */
+  // answer: "yes" | "no" | "unsure" (true/false also accepted). opts.lines replaces the canned reply
+  // (used when Claude wrote the reply to a free-text answer); opts.free marks the log entry.
+  TD.resolveProbe = function (state, probe, answer, opts) {
+    opts = opts || {};
+    const a = answer === true ? "yes" : answer === false ? "no" : answer;
+    if (a === "yes") state.hits++; else if (a === "no") state.misses++;
+    state.probeLog.push({ id: probe.id, answer: a, free: !!opts.free });
+    const out = [];
+    let lines = opts.lines;
+    if (!lines) lines = a === "yes" ? probe.yes : a === "no" ? probe.no : [state.pool.fork("unsure" + state.probeLog.length).pick(TD.probes.unsure)];
+    lines.forEach(l => { out.push(S.say(l, opts.raw ? { raw: true } : undefined)); out.push(S.pause(500)); });
+    if (a === "no" && state.misses === 2) TD.probes.recover.forEach(l => out.push(S.say(l)));
+    return out;
+  };
+  // Beat before the cards are turned: the player says when they are ready.
+  TD.scriptReady = function () {
+    return [S.say(TD.voice.pickDone), S.pause(900), S.say(TD.voice.ready),
+      { t: "choose", id: "ready", store: "ready", options: [{ id: "go", label: "I am ready" }] }, S.pause(500)];
+  };
+  TD.resolveChoice = function (state, opt) {
+    state.outcomeFeel = opt.id;
+    return opt.say.map(l => S.say(l));
+  };
+
+  TD.scriptReading = function (state) {
+    const sp = TD.spreads[state.spreadId];
+    TD.makeDraw(state);
+    TD.evaluateCombos(state);
+    const R = state.pool.fork("script");
+    const celtic = sp.id === "celtic";
+    const steps = [];
+
+    // Which card carries an override combo's spoken text: the later of its two cards.
+    const overrideAt = {};
+    state.combos.filter(c => c.override).forEach(c => {
+      const later = c.bind.A.slot > c.bind.B.slot ? c.bind.A : c.bind.B;
+      if (!(later.slot in overrideAt)) overrideAt[later.slot] = c;
+    });
+    const overrideCards = new Set();
+    Object.values(overrideAt).forEach(c => { overrideCards.add(c.bind.A.slot); overrideCards.add(c.bind.B.slot); });
+
+    steps.push(S.mood(0.35), S.act("Madame Oriel folds her hands on the cloth. The candle steadies."));
+    steps.push(S.say(R.pick(TD.voice.turn)), S.pause(900));
+
+    const usedProbes = new Set();
+    const pickProbe = (pool, tone) => {
+      const fit = pool.filter(p => p.fits.includes(tone) && !usedProbes.has(p.id));
+      const list = fit.length ? fit : pool.filter(p => !usedProbes.has(p.id));
+      if (!list.length) return null;
+      const p = R.pick(list); usedProbes.add(p.id); return p;
+    };
+    const probeStep = p => p ? [{ t: "probe", probe: p }] : [];
+
+    state.draw.forEach((c, i) => {
+      const pos = c.pos;
+      // Reader speaks the position, then turns the card.
+      steps.push(S.lazy(st => {
+        const shaky = st.misses > st.hits;
+        return [S.say(pos.intro + (shaky ? "... forgive me if I misread this one." : "."))];
+      }));
+      steps.push(S.pause(700));
+      steps.push({ t: "reveal", slot: i });
+      steps.push(S.mood(tensionOf(c.tone), { rev: c.rev, tier: c.tier }));
+      steps.push(S.pause(c.tone <= -2 ? 1600 : 1000));
+      steps.push(S.say(R.pick(TD.reactions[String(c.tone)])));
+      steps.push(S.pause(500));
+      steps.push(S.say(c.name + (c.rev ? ", reversed." : ", upright."), { cls: "title" }));
+      steps.push(S.pause(500));
+
+      const ov = overrideAt[i];
+      if (ov) {
+        // Combo override: swap the generic card text for the combination reading.
+        steps.push(S.flag(ov.flag, true));
+        steps.push(S.mood(0.9, { rev: c.rev, tier: "catastrophic", combo: true }));
+        steps.push(S.act("The candle gutters. She stops speaking for a long moment."));
+        steps.push(S.pause(1300));
+        ov.lines.forEach(l => { steps.push(S.say(l, { cls: "combo", bind: ov.bind })); steps.push(S.pause(800)); });
+      } else if (overrideCards.has(i)) {
+        steps.push(S.say(c.text));
+        steps.push(S.act("Her eyes drift to the unturned cards, then back, as if listening to something."));
+      } else {
+        if (R.float() < 0.45) { steps.push(S.say(R.pick(TD.voice.murmurs))); steps.push(S.pause(900)); }
+        steps.push(S.say(c.text));
+        if (c.rev && c.tone <= -1) { steps.push(S.pause(700)); steps.push(S.say(R.pick(REV_HEAVY))); }
+        steps.push(S.pause(600));
+        if (i >= 1 && R.float() < 0.6) {
+          const cbY = R.pick(TD.voice.callbackYes), cbN = R.pick(TD.voice.callbackNo);
+          steps.push(S.lazy(st => {
+            const last = st.probeLog[st.probeLog.length - 1];
+            if (!last) return [];
+            return last.answer === "yes" ? [S.say(cbY), S.pause(500)] : last.answer === "no" ? [S.say(cbN), S.pause(500)] : [];
+          }));
+        }
+        const br = (BRIDGE[pos.key] || BRIDGE.heart);
+        steps.push(S.say(R.pick(br)));
+      }
+      steps.push(S.pause(900));
+
+      // Cold-reading probes.
+      if (!celtic && i === 0) steps.push(...probeStep(pickProbe(TD.probes.past, c.tone)));
+      if (!celtic && i === 1) steps.push(...probeStep(pickProbe(TD.probes.present, c.tone)));
+      if (celtic && i === 1) steps.push(...probeStep(pickProbe(TD.probes.present, c.tone)));
+      if (celtic && i === 8) steps.push(...probeStep(pickProbe(TD.probes.deep, c.tone)));
+      if (i === state.draw.length - 1) {
+        steps.push(S.say(TD.probes.outcome.ask));
+        steps.push({ t: "choose", id: "outcome_feel", resolve: true, options: TD.probes.outcome.options.map(o => ({ id: o.id, label: o.label, say: o.say })) });
+      }
+    });
+
+    // Synthesis: lazily built so it reflects the player's answers.
+    steps.push(S.lazy(st => {
+      const out = [];
+      const d = TD.drawApi(st.draw);
+      const end = d.byKey("outcome") || d.byKey("future");
+      out.push(S.mood(0.35, { weather: 0.3 }));
+      out.push(S.act("She sits back and looks at the whole layout for a long time."));
+      out.push(S.pause(1500));
+      const rest = st.combos.filter(c => !c.override).slice(0, 2);
+      if (rest.length) {
+        out.push(S.say("Now I will say what none of them says alone. They talk to each other."));
+        out.push(S.pause(900));
+        rest.forEach(c => {
+          out.push(S.flag(c.flag, true));
+          c.lines.forEach(l => { out.push(S.say(l, { cls: "combo", bind: c.bind })); out.push(S.pause(800)); });
+        });
+      }
+      out.push(S.say("You asked, “{question}” and you came to me {emotion}, {name}."));
+      out.push(S.pause(700));
+      if (end.tone >= 1) out.push(S.say("The last card leans your way. The road is not closed to you. It asks for your attention, not your fear."));
+      else if (end.tone === 0) out.push(S.say("The last card does not decide for you. The outcome is still in your hands, and that is both the burden and the gift."));
+      else out.push(S.say("The last card carries a warning. A warning is not a sentence. It is a courtesy, so the road can be changed while it still can."));
+      out.push(S.pause(800));
+      if (st.hits >= 2) TD.probes.rapport.forEach(l => out.push(S.say(l)));
+      else if (st.misses >= 2) out.push(S.say("Where I missed, trust yourself over me. You know your life; I only know the cards."));
+      out.push(S.pause(700));
+      out.push(S.say(TD.counsel[end.suit] || TD.counsel.None));
+      out.push(S.pause(900));
+      TD.voice.closing.forEach(l => { out.push(S.say(l)); out.push(S.pause(600)); });
+      return out;
+    }));
+    steps.push({ t: "phase", name: "end" });
+    return steps;
+  };
+})();
+
+// Procedural card art. Faces are SVG built from the card data, so the game needs no image files.
+// In the Android build, replace faceSVG() with an <img src={card.visual_asset_path}>.
+(function () {
+  const TD = globalThis.TD;
+  const INK = "#2b1a24", WINE = "#7a1f33", GOLD = "#b88a2e", PARCH = "#e6d8b6";
+  const ROMAN = ["0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI"];
+  const pts = a => a.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  const star = (cx, cy, R, r, n, rot) => {
+    const a = [];
+    for (let i = 0; i < n * 2; i++) {
+      const ang = (rot + i * 180 / n) * Math.PI / 180, rad = i % 2 ? r : R;
+      a.push([cx + rad * Math.cos(ang), cy + rad * Math.sin(ang)]);
+    }
+    return pts(a);
+  };
+  const pent = (cx, cy, R, rot) => {
+    const o = [];
+    for (let i = 0; i < 5; i++) { const ang = (rot + i * 72) * Math.PI / 180; o.push([cx + R * Math.cos(ang), cy + R * Math.sin(ang)]); }
+    return pts([o[0], o[2], o[4], o[1], o[3]]);
+  };
+  const rays = (cx, cy, r1, r2, n) => {
+    let d = "";
+    for (let i = 0; i < n; i++) {
+      const a = i * 2 * Math.PI / n;
+      d += `M${(cx + r1 * Math.cos(a)).toFixed(1)} ${(cy + r1 * Math.sin(a)).toFixed(1)}L${(cx + r2 * Math.cos(a)).toFixed(1)} ${(cy + r2 * Math.sin(a)).toFixed(1)}`;
+    }
+    return `<path d="${d}"/>`;
+  };
+
+  const MAJOR_ART = [
+    `<circle cx="70" cy="24" r="10" fill="${GOLD}" stroke="none"/><path d="M8 80H48L58 92H8Z" fill="${INK}"/><circle cx="36" cy="44" r="6"/><path d="M36 50V68M36 56L50 48M36 68L30 78M36 68L46 76"/><path d="M60 80H92" stroke-dasharray="3 5"/>`,
+    `<circle cx="40" cy="20" r="9"/><circle cx="60" cy="20" r="9"/><path d="M50 36V68M30 60H70"/><circle cx="26" cy="80" r="4"/><rect x="38" y="76" width="8" height="8"/><path d="M56 84L60 76L64 84Z"/><path d="M74 80L78 76L82 80L78 84Z"/>`,
+    `<rect x="12" y="12" width="14" height="78" fill="${INK}"/><rect x="74" y="12" width="14" height="78" fill="${PARCH}"/><path d="M58 32A19 19 0 1 0 58 72A14 14 0 1 1 58 32Z" fill="${GOLD}"/>`,
+    `<circle cx="50" cy="40" r="17"/><path d="M50 57V90M36 74H64"/><circle cx="38" cy="12" r="2.5" fill="${GOLD}"/><circle cx="50" cy="8" r="2.5" fill="${GOLD}"/><circle cx="62" cy="12" r="2.5" fill="${GOLD}"/>`,
+    `<path d="M24 84C12 42 40 18 50 52C60 18 88 42 76 84"/><rect x="38" y="66" width="24" height="22" fill="${WINE}"/>`,
+    `<path d="M50 8V92M38 20H62M32 34H68M26 48H74"/><circle cx="50" cy="72" r="4" fill="${GOLD}"/>`,
+    `<circle cx="38" cy="62" r="20"/><circle cx="62" cy="62" r="20"/><circle cx="50" cy="20" r="9" fill="${GOLD}"/><path d="M50 29V44"/>`,
+    `<circle cx="50" cy="52" r="30"/><circle cx="50" cy="52" r="6" fill="${INK}"/><path d="M50 22V82M24 37L76 67M24 67L76 37"/>`,
+    `<circle cx="44" cy="14" r="6"/><circle cx="56" cy="14" r="6"/><circle cx="50" cy="58" r="32" stroke-dasharray="4 4"/><circle cx="50" cy="58" r="17"/><path d="M43 54H45M55 54H57M42 65Q50 71 58 65"/>`,
+    `<polygon points="50,26 72,64 28,64"/><polygon points="50,78 28,40 72,40"/><circle cx="50" cy="52" r="32" stroke-dasharray="2 5"/><path d="M14 8V92"/>`,
+    `<circle cx="50" cy="52" r="32"/><circle cx="50" cy="52" r="10"/><path d="M50 20V84M18 52H82M27 29L73 75M27 75L73 29"/><circle cx="50" cy="20" r="3.5" fill="${GOLD}"/><circle cx="82" cy="52" r="3.5" fill="${GOLD}"/><circle cx="50" cy="84" r="3.5" fill="${GOLD}"/><circle cx="18" cy="52" r="3.5" fill="${GOLD}"/>`,
+    `<path d="M50 10V90M22 28H78"/><path d="M22 28L12 58H32ZM78 28L68 58H88Z"/><path d="M34 90H66"/>`,
+    `<path d="M18 12H82M50 12V40"/><path d="M50 40V66M50 50L36 62M50 50L64 62"/><circle cx="50" cy="78" r="8"/><circle cx="50" cy="78" r="13" stroke-dasharray="2 3"/>`,
+    `<circle cx="50" cy="48" r="8" fill="${WINE}"/><circle cx="50" cy="26" r="10"/><circle cx="71" cy="41" r="10"/><circle cx="63" cy="66" r="10"/><circle cx="37" cy="66" r="10"/><circle cx="29" cy="41" r="10"/><path d="M50 78V94"/>`,
+    `<path d="M20 20H42L38 46H24Z"/><path d="M58 54H80L76 80H62Z"/><path d="M34 46C40 68 60 32 68 54"/><circle cx="31" cy="30" r="2.5" fill="${GOLD}"/>`,
+    `<circle cx="50" cy="52" r="34"/><polygon points="${pent(50, 54, 28, 90)}" fill="${WINE}" fill-opacity=".35"/>`,
+    `<path d="M36 92V32H30V20H70V32H64V92Z" fill="${INK}"/><path d="M80 6L60 46H72L50 86" stroke="${GOLD}" stroke-width="4"/><circle cx="20" cy="50" r="3" fill="${WINE}"/><circle cx="84" cy="68" r="3" fill="${WINE}"/><circle cx="16" cy="74" r="2.5" fill="${WINE}"/>`,
+    `<polygon points="${star(50, 40, 26, 9, 8, -90)}" fill="${GOLD}"/><circle cx="18" cy="68" r="2.5" fill="${GOLD}"/><circle cx="82" cy="68" r="2.5" fill="${GOLD}"/><circle cx="30" cy="82" r="2.5" fill="${GOLD}"/><circle cx="70" cy="82" r="2.5" fill="${GOLD}"/><path d="M14 92Q32 84 50 92T86 92"/>`,
+    `<path d="M58 14A30 30 0 1 0 58 84A23 23 0 1 1 58 14Z" fill="${GOLD}"/><path d="M10 94V70H24V94M76 94V70H90V94"/><path d="M50 86V94" stroke-dasharray="1 4"/>`,
+    `<circle cx="50" cy="50" r="15" fill="${GOLD}"/>${rays(50, 50, 22, 36, 12)}`,
+    `<path d="M16 32L56 18V56L16 44Z" fill="${GOLD}"/><path d="M64 26L84 20M64 38L88 38M64 50L84 56"/><rect x="14" y="76" width="16" height="12"/><rect x="42" y="76" width="16" height="12"/><rect x="70" y="76" width="16" height="12"/>`,
+    `<ellipse cx="50" cy="52" rx="28" ry="38"/><ellipse cx="50" cy="52" rx="22" ry="32" stroke-dasharray="3 3"/><path d="M50 36L58 52L50 68L42 52Z" fill="${WINE}"/><rect x="6" y="8" width="8" height="8"/><rect x="86" y="8" width="8" height="8"/><rect x="6" y="88" width="8" height="8"/><rect x="86" y="88" width="8" height="8"/>`
+  ];
+
+  const SUIT_ICON = {
+    Cups: `<path d="M5 4h14c0 6-3 10-7 10S5 10 5 4z" fill="${WINE}"/><path d="M12 14v6M7 21h10"/>`,
+    Wands: `<path d="M5 21L19 3" stroke-width="2.8"/><path d="M19 3c3 2 3 5 1 8M19 3c-4-1-7 1-8 5"/>`,
+    Swords: `<path d="M12 1l2.6 13H9.4z" fill="#a4a9b4"/><path d="M6 15h12M12 15v7"/>`,
+    Pentacles: `<circle cx="12" cy="12" r="10.5" fill="${GOLD}"/><polygon points="${pent(12, 12.4, 7, -90)}" fill="none"/>`
+  };
+  const PIPS = {
+    2: [[50, 28], [50, 76]], 3: [[50, 22], [50, 50], [50, 78]],
+    4: [[30, 30], [70, 30], [30, 72], [70, 72]], 5: [[30, 28], [70, 28], [50, 50], [30, 74], [70, 74]],
+    6: [[32, 24], [68, 24], [32, 50], [68, 50], [32, 76], [68, 76]],
+    7: [[32, 22], [68, 22], [50, 36], [32, 50], [68, 50], [32, 78], [68, 78]],
+    8: [[32, 20], [68, 20], [50, 34], [32, 48], [68, 48], [50, 62], [32, 78], [68, 78]],
+    9: [[30, 18], [70, 18], [30, 40], [70, 40], [50, 50], [30, 62], [70, 62], [30, 84], [70, 84]],
+    10: [[30, 16], [70, 16], [50, 28], [30, 40], [70, 40], [30, 62], [70, 62], [50, 74], [30, 86], [70, 86]]
+  };
+  const icon = (suit, x, y, s) => `<g transform="translate(${x - 12 * s},${y - 12 * s}) scale(${s})" stroke="${INK}" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round">${SUIT_ICON[suit]}</g>`;
+
+  function artFor(card) {
+    if (card.arcana_type === "Major") return MAJOR_ART[card.number];
+    const n = card.number, suit = card.suit;
+    if (n === 1) return icon(suit, 50, 52, 3.1);
+    if (n <= 10) return PIPS[n].map(p => icon(suit, p[0], p[1], n >= 7 ? 1.05 : 1.25)).join("");
+    const crown = n === 11 ? `<circle cx="50" cy="16" r="5" fill="${GOLD}"/>` :
+      n === 12 ? `<path d="M30 28L50 10L70 28" />` :
+      `<path d="M28 28L34 12L42 24L50 8L58 24L66 12L72 28Z" fill="${GOLD}"/>`;
+    return `<g fill="none" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round">${crown}</g>` + icon(suit, 50, 60, 2.6);
+  }
+  const label = card => {
+    if (card.arcana_type === "Major") return ROMAN[card.number];
+    return ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "Pg", "Kn", "Q", "K"][card.number - 1];
+  };
+
+  // Full card face. Reversed cards are drawn upside down, as on a real table.
+  TD.faceSVG = function (card, rev) {
+    const art = `<g fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${artFor(card)}</g>`;
+    const name = card.name.toUpperCase();
+    const fs = name.length > 18 ? 6.4 : name.length > 13 ? 7.4 : 8.6;
+    return `<svg class="face-svg" viewBox="0 0 100 170" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"${rev ? ' style="transform:rotate(180deg)"' : ""}>
+<rect x="1" y="1" width="98" height="168" rx="7" fill="#d9c9a0" stroke="${GOLD}" stroke-width="1.6"/>
+<ellipse cx="50" cy="70" rx="46" ry="62" fill="#efe3c6" opacity=".55"/>
+<rect x="6" y="6" width="88" height="158" rx="4" fill="none" stroke="${INK}" stroke-width=".7" opacity=".6"/>
+<text x="50" y="22" text-anchor="middle" font-family="'IM Fell English SC',Georgia,serif" font-size="11" letter-spacing="2" fill="${INK}">${label(card)}</text>
+<g transform="translate(8,32) scale(.84)">${art}</g>
+<line x1="20" y1="138" x2="80" y2="138" stroke="${GOLD}" stroke-width=".8"/>
+<text x="50" y="152" text-anchor="middle" font-family="'IM Fell English SC',Georgia,serif" font-size="${fs}" letter-spacing="1" fill="${INK}">${name}</text>
+</svg>`;
+  };
+
+  const BACK = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 170"><g fill="none" stroke="#c9a45c" stroke-width="1.4" stroke-linecap="round">
+<circle cx="50" cy="85" r="22"/><circle cx="50" cy="85" r="9"/>
+<polygon points="${star(50, 85, 32, 14, 8, -90)}" stroke-width="1"/>
+<path d="M50 40V52M50 118V130M18 85H30M70 85H82"/></g></svg>`;
+  TD.backArt = 'url("data:image/svg+xml,' + encodeURIComponent(BACK) + '")';
+})();
+
+// Adaptive audio, synthesised with the Web Audio API (no sample files).
+// Layers: low organic drone, window rain, candle crackle. All react to setMood(tension, weather).
+(function () {
+  const TD = globalThis.TD;
+  const A = TD.Audio = {
+    ctx: null, on: true, level: 0.5, started: false, tension: 0.3, weather: 0.3, nodes: {}, crackleTimer: null, hushUntil: 0
+  };
+
+  function noiseBuffer(ctx, seconds, kind) {
+    const len = Math.floor(ctx.sampleRate * seconds), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      if (kind === "brown") { last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; } else d[i] = w;
+    }
+    return buf;
+  }
+  function loopSource(ctx, buf) { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; return s; }
+
+  A.start = function () {
+    if (A.started) { if (A.ctx && A.ctx.state === "suspended") A.ctx.resume(); return; }
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = A.ctx = new Ctx(), n = A.nodes;
+      n.master = ctx.createGain(); n.master.gain.value = A.on ? A.level : 0;
+      n.comp = ctx.createDynamicsCompressor();
+      n.master.connect(n.comp); n.comp.connect(ctx.destination);
+
+      // Drone: two close sines (slow beating), a triangle fifth, filtered, breathing LFO.
+      n.drone = ctx.createGain(); n.drone.gain.value = 0.0;
+      n.droneF = ctx.createBiquadFilter(); n.droneF.type = "lowpass"; n.droneF.frequency.value = 240; n.droneF.Q.value = 0.7;
+      [[55, "sine", 0.5], [55.35, "sine", 0.5], [82.4, "triangle", 0.18], [110.2, "sine", 0.1]].forEach(([f, t, g]) => {
+        const o = ctx.createOscillator(); o.type = t; o.frequency.value = f;
+        const og = ctx.createGain(); og.gain.value = g; o.connect(og); og.connect(n.droneF); o.start();
+        (n.droneOsc = n.droneOsc || []).push(o);
+      });
+      n.droneF.connect(n.drone); n.drone.connect(n.master);
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.06;
+      const lg = ctx.createGain(); lg.gain.value = 70; lfo.connect(lg); lg.connect(n.droneF.frequency); lfo.start();
+      n.drone.gain.linearRampToValueAtTime(0.09, ctx.currentTime + 4);
+
+      // Rain: filtered white noise (body) plus brown noise (distant roof).
+      n.rain = ctx.createGain(); n.rain.gain.value = 0;
+      const rs = loopSource(ctx, noiseBuffer(ctx, 3, "white")), hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter();
+      hp.type = "highpass"; hp.frequency.value = 900; lp.type = "lowpass"; lp.frequency.value = 7000;
+      rs.connect(hp); hp.connect(lp); lp.connect(n.rain);
+      const rb = loopSource(ctx, noiseBuffer(ctx, 4, "brown")), rbg = ctx.createGain(); rbg.gain.value = 0.35;
+      rb.connect(rbg); rbg.connect(n.rain);
+      n.rain.connect(n.master); rs.start(); rb.start();
+      n.rain.gain.linearRampToValueAtTime(0.025, ctx.currentTime + 3);
+
+      A.noise = noiseBuffer(ctx, 1.5, "white");
+      A.started = true;
+      A.setMood(A.tension, A.weather);
+      A._crackle();
+    } catch (e) { A.ctx = null; }
+  };
+
+  A.setOn = function (on) {
+    A.on = on;
+    if (A.nodes.master) A.nodes.master.gain.setTargetAtTime(on ? A.level : 0, A.ctx.currentTime, 0.15);
+  };
+
+  // tension 0..1 drives drone brightness and crackle rate; weather 0..1 drives rain level.
+  A.setMood = function (tension, weather) {
+    A.tension = tension;
+    if (weather !== undefined) A.weather = weather; else A.weather = Math.max(A.weather * 0.9, 0.2 + tension * 0.6);
+    const n = A.nodes; if (!A.ctx || !n.droneF) return;
+    const t = A.ctx.currentTime;
+    n.droneF.frequency.setTargetAtTime(180 + tension * 520, t, 1.2);
+    n.drone.gain.setTargetAtTime(0.07 + tension * 0.05, t, 1.5);
+    n.droneOsc[1].frequency.setTargetAtTime(55 + 0.35 + tension * 1.6, t, 1.5);
+    n.rain.gain.setTargetAtTime(0.025 + A.weather * 0.11, t, 1.6);
+  };
+
+  A._burst = function (dur, freq, q, gain, when) {
+    const ctx = A.ctx; if (!ctx || !A.noise) return;
+    const s = ctx.createBufferSource(); s.buffer = A.noise;
+    const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = q;
+    const g = ctx.createGain(), t = when || ctx.currentTime;
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f); f.connect(g); g.connect(A.nodes.master);
+    s.start(t, Math.random() * 1.0, dur + 0.02);
+  };
+
+  // Candle crackle: irregular tiny pops. Rate climbs with tension; hush() creates a stillness before a heavy reveal.
+  A._crackle = function () {
+    clearTimeout(A.crackleTimer);
+    const ctx = A.ctx; if (!ctx) return;
+    const now = performance.now();
+    if (now > A.hushUntil && A.on) {
+      const big = Math.random() < 0.08 + A.tension * 0.12;
+      A._burst(big ? 0.05 : 0.014, 1800 + Math.random() * 2600, 2 + Math.random() * 4, (big ? 0.10 : 0.035) * (0.6 + Math.random() * 0.7));
+      if (big && A.tension > 0.6) A._burst(0.03, 900, 3, 0.04, ctx.currentTime + 0.05);
+    }
+    const base = 520 - A.tension * 380;
+    A.crackleTimer = setTimeout(A._crackle, Math.max(60, base * (0.3 + Math.random() * 1.4)));
+  };
+  A.hush = function (ms) { A.hushUntil = performance.now() + ms; };
+
+  A.flip = function () {
+    if (!A.ctx) return;
+    A._burst(0.09, 2400, 0.8, 0.06); A._burst(0.12, 140, 1.2, 0.12);
+  };
+  A.pick = function () {
+    if (!A.ctx) return;
+    const ctx = A.ctx, t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = A.noise;
+    const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 3;
+    f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(3200, t + 0.35);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.055, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    s.connect(f); f.connect(g); g.connect(A.nodes.master); s.start(t, 0, 0.45);
+  };
+  A.shuffleTick = function () { if (A.ctx) A._burst(0.04, 1500 + Math.random() * 1500, 1, 0.03); };
+
+  A._tone = function (freq, t, dur, gain, type) {
+    const ctx = A.ctx, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(A.nodes.master); o.start(t); o.stop(t + dur + 0.05);
+  };
+  // Tier 2/1: soft rising chime. Tier 0: single suspended note. Tier -1/-2: dissonant swell, thunder at -2.
+  A.reveal = function (tier, rev) {
+    if (!A.ctx) return;
+    const t = A.ctx.currentTime;
+    if (tier >= 1) {
+      [523.25, 659.25, 783.99].slice(0, tier === 2 ? 3 : 2).forEach((f, i) => A._tone(f, t + i * 0.12, 2.4, 0.028 + (tier === 2 ? 0.01 : 0)));
+    } else if (tier === 0) {
+      A._tone(392, t, 2.2, 0.03); A._tone(587.33, t + 0.1, 2.2, 0.018);
+    } else {
+      A._tone(98, t, 3.2, 0.05, "triangle"); A._tone(103.8, t, 3.2, 0.04, "triangle");
+      if (tier <= -2) A._thunder();
+    }
+  };
+  A._thunder = function () {
+    const ctx = A.ctx, t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = noiseBuffer(ctx, 3.5, "brown");
+    const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(260, t); f.frequency.exponentialRampToValueAtTime(60, t + 3);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.28, t + 0.25); g.gain.exponentialRampToValueAtTime(0.0001, t + 3.4);
+    s.connect(f); f.connect(g); g.connect(A.nodes.master); s.start(t);
+    const o = ctx.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(62, t); o.frequency.exponentialRampToValueAtTime(26, t + 2.4);
+    const og = ctx.createGain(); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.1, t + 0.2); og.gain.exponentialRampToValueAtTime(0.0001, t + 2.6);
+    o.connect(og); og.connect(A.nodes.master); o.start(t); o.stop(t + 2.7);
+  };
+})();
+
+// Full-screen canvas: window rain, drifting embers, and the smoke that pulls a chosen card into its slot.
+(function () {
+  const TD = globalThis.TD;
+  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const FX = TD.FX = { weather: 0.3, tension: 0.3, parts: [], drops: [], w: 0, h: 0, last: 0 };
+  let cv, g;
+
+  FX.init = function (canvas) {
+    cv = canvas; g = cv.getContext("2d");
+    const fit = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      FX.w = innerWidth; FX.h = innerHeight;
+      cv.width = FX.w * dpr; cv.height = FX.h * dpr;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    fit(); addEventListener("resize", fit);
+    for (let i = 0; i < 170; i++) FX.drops.push(newDrop(true));
+    requestAnimationFrame(loop);
+  };
+  FX.setMood = (tension, weather) => { FX.tension = tension; if (weather !== undefined) FX.weather = weather; else FX.weather = Math.max(FX.weather * 0.9, 0.2 + tension * 0.6); };
+
+  function newDrop(anywhere) {
+    return { x: Math.random() * (FX.w + 80) - 40, y: anywhere ? Math.random() * FX.h : -20, len: 10 + Math.random() * 22, v: 520 + Math.random() * 520, a: 0.05 + Math.random() * 0.14 };
+  }
+  const rand = (a, b) => a + Math.random() * (b - a);
+
+  // Smoke and glow travel from a picked card toward its slot.
+  FX.pull = function (from, to, done) {
+    const n = reduce ? 6 : 34, mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
+    const px = -(to.y - from.y), py = to.x - from.x, pl = Math.hypot(px, py) || 1;
+    for (let i = 0; i < n; i++) {
+      const off = rand(-90, 90);
+      FX.parts.push({ kind: "pull", delay: rand(0, 0.35), t: 0, dur: rand(0.7, 1.1), from, to,
+        cx: mx + px / pl * off, cy: my + py / pl * off, phase: rand(0, 6.28), amp: rand(6, 20), size: rand(3, 8),
+        hue: Math.random() < 0.7 ? 36 : 275 });
+    }
+    setTimeout(() => { FX.burst(to.x, to.y, 36, reduce ? 4 : 18); done && done(); }, 1050);
+  };
+  FX.burst = function (x, y, hue, n) {
+    for (let i = 0; i < (n || 14); i++) {
+      const a = rand(0, 6.28), s = rand(20, 110);
+      FX.parts.push({ kind: "spark", x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 20, life: 0, max: rand(0.5, 1.2), size: rand(1.5, 4), hue });
+    }
+  };
+  FX.smoke = function (x, y, n, hue) {
+    for (let i = 0; i < (reduce ? 2 : n || 8); i++) {
+      FX.parts.push({ kind: "smoke", x: x + rand(-14, 14), y: y + rand(-6, 6), vx: rand(-14, 14), vy: rand(-40, -14), life: 0, max: rand(1.4, 2.6), size: rand(14, 34), hue: hue || 275 });
+    }
+  };
+
+  let emberAcc = 0;
+  function loop(ts) {
+    const dt = Math.min(0.05, (ts - (FX.last || ts)) / 1000); FX.last = ts;
+    g.clearRect(0, 0, FX.w, FX.h);
+
+    // Rain: density follows weather.
+    const want = reduce ? 24 : Math.floor(28 + FX.weather * 140);
+    g.lineWidth = 1;
+    for (let i = 0; i < want; i++) {
+      const d = FX.drops[i];
+      d.y += d.v * dt * (0.8 + FX.weather * 0.6); d.x -= d.v * dt * 0.12;
+      if (d.y > FX.h + 30 || d.x < -50) { FX.drops[i] = newDrop(false); continue; }
+      g.strokeStyle = "rgba(170,186,214," + (d.a * (0.6 + FX.weather * 0.9)).toFixed(3) + ")";
+      g.beginPath(); g.moveTo(d.x, d.y); g.lineTo(d.x + d.len * 0.12, d.y - d.len); g.stroke();
+    }
+
+    // Embers rising from the candle at the bottom.
+    if (!reduce) {
+      emberAcc += dt * (1.2 + FX.tension * 4);
+      while (emberAcc > 1) {
+        emberAcc -= 1;
+        FX.parts.push({ kind: "ember", x: FX.w * rand(0.3, 0.7), y: FX.h + 4, vx: rand(-10, 10), vy: rand(-60, -25), life: 0, max: rand(2.5, 4.5), size: rand(0.8, 2), hue: 32 });
+      }
+    }
+
+    g.globalCompositeOperation = "lighter";
+    const keep = [];
+    for (const p of FX.parts) {
+      if (p.kind === "pull") {
+        p.delay -= dt; if (p.delay > 0) { keep.push(p); continue; }
+        p.t += dt / p.dur; if (p.t >= 1) continue;
+        const e = p.t < 0.5 ? 2 * p.t * p.t : 1 - Math.pow(-2 * p.t + 2, 2) / 2, u = 1 - e;
+        let x = u * u * p.from.x + 2 * u * e * p.cx + e * e * p.to.x, y = u * u * p.from.y + 2 * u * e * p.cy + e * e * p.to.y;
+        x += Math.sin(p.t * 9 + p.phase) * p.amp * u; y += Math.cos(p.t * 7 + p.phase) * p.amp * u * 0.7;
+        const a = Math.sin(Math.PI * p.t) * 0.8, r = p.size * (1.2 - p.t * 0.5);
+        const gr = g.createRadialGradient(x, y, 0, x, y, r * 2.4);
+        gr.addColorStop(0, `hsla(${p.hue},90%,65%,${a})`); gr.addColorStop(1, `hsla(${p.hue},90%,50%,0)`);
+        g.fillStyle = gr; g.beginPath(); g.arc(x, y, r * 2.4, 0, 6.283); g.fill();
+        keep.push(p);
+      } else {
+        p.life += dt; if (p.life >= p.max) continue;
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        if (p.kind === "smoke") { p.vx *= 0.99; p.size += dt * 10; }
+        if (p.kind === "spark") { p.vy += 60 * dt; }
+        const k = 1 - p.life / p.max;
+        const a = (p.kind === "smoke" ? 0.10 : p.kind === "ember" ? 0.55 : 0.8) * k;
+        if (p.kind === "smoke") {
+          const gr = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+          gr.addColorStop(0, `hsla(${p.hue},50%,60%,${a})`); gr.addColorStop(1, `hsla(${p.hue},50%,40%,0)`);
+          g.fillStyle = gr; g.beginPath(); g.arc(p.x, p.y, p.size, 0, 6.283); g.fill();
+        } else {
+          g.fillStyle = `hsla(${p.hue},95%,62%,${a})`; g.beginPath(); g.arc(p.x, p.y, p.size, 0, 6.283); g.fill();
+        }
+        keep.push(p);
+      }
+    }
+    FX.parts = keep.length > 500 ? keep.slice(-500) : keep;
+    g.globalCompositeOperation = "source-over";
+    requestAnimationFrame(loop);
+  }
+})();
+
+// Optional live conversation. The rules engine still chooses the cards, orientations, combos and tone.
+// Claude only supplies words, through the artifact's `sample` capability. Every call is on a viewer action,
+// and every call has a fallback, so the game works the same with this switched off or unavailable.
+(function () {
+  const TD = globalThis.TD;
+  const AI = TD.AI = { sample: null, ready: false, off: false, enabled: true, coolUntil: 0, turns: [], count: 0, MAX: 8, status: "checking" };
+
+  AI.init = async function () {
+    try {
+      const c = window.claude;
+      if (c && c.use) {
+        const s = await c.use("sample");
+        if (typeof s === "function") { AI.sample = s; AI.ready = true; }
+      }
+    } catch (e) { /* no AI in this view */ }
+    AI.status = AI.ready ? "available" : "unavailable";
+    TD.UI && TD.UI.logicDirty && TD.UI.logicDirty();
+  };
+  AI.usable = () => AI.ready && !AI.off && AI.enabled && Date.now() >= AI.coolUntil;
+
+  const PERSONA = [
+    "You are Madame Oriel, a warm, perceptive, slightly mysterious tarot reader sitting across a small table from one person, by candlelight, on a rainy night.",
+    "Talk like a real person across a table: short natural sentences, a pause written as '...' now and then, no lists, no markdown, no emojis, no stage directions in asterisks.",
+    "Never say you are an AI or a model. Stay in character.",
+    "Keep every reply to 1 to 3 sentences, under 60 words, unless they ask for more.",
+    "Stay anchored to the cards actually on the table. Never invent cards or meanings that are not listed.",
+    "Offer reflection and possibilities, never certainty. Do not predict death, illness, pregnancy, or legal or money outcomes: say the cards cannot answer that and suggest a real professional.",
+    "Be kind, not preachy. Ask at most one question, and only when it comes naturally.",
+    "If the person seems in real distress or mentions hurting themselves, gently step out of the reading, be warm and direct, and encourage them to reach out to someone they trust or to local emergency or crisis services."
+  ].join("\n");
+
+  function briefing(st, early) {
+    const c = TD.context(st);
+    const lines = [PERSONA, "", "THE SITTING",
+      "Their name: " + (c.name === "friend" ? "(not given)" : c.name),
+      "Their question: " + c.question];
+    if (!early) {
+      lines.push("They arrived feeling: " + c.emotion);
+      lines.push("Spread: " + TD.spreads[st.spreadId].name);
+      lines.push("Cards on the table:");
+      lines.push(st.draw.length ? st.draw.map(d => `- ${d.slotLabel} (${d.pos.meaning}): ${d.name}, ${d.rev ? "reversed" : "upright"}. ${d.text}`).join("\n") : "(not drawn yet)");
+      lines.push("Card combinations noticed: " + (st.combos.length ? st.combos.map(x => x.id).join(", ") : "none"));
+      lines.push("Their answers to your probing questions: " + (st.probeLog.length ? st.probeLog.map(p => p.id + "=" + p.answer).join(", ") : "none yet"));
+    }
+    return lines.join("\n");
+  }
+  const clean = t => String(t || "").replace(/[*_#`]/g, "").replace(/\s+\n/g, "\n").trim().slice(0, 700);
+
+  // One or two sentences reacting to the question as it is first asked.
+  AI.react = async function (st) {
+    const prompt = briefing(st, true) + "\n\nThey have just told you their question and you have not drawn any cards yet. React the way a real reader settling in would: reflect one specific thing about their question in 1 or 2 short sentences. No card talk, no advice yet.";
+    const r = await AI.sample(prompt, { modelTier: "quick", cache: false });
+    const out = clean(r.text); if (!out) throw { code: "empty_completion" };
+    return out;
+  };
+
+  // Free-text answer to a probing question. Returns { agree, reply }.
+  AI.probe = async function (st, probe, userText) {
+    const prompt = briefing(st) + `\n\nYou just said: "${probe.statement}" and asked: "${probe.ask}"\nThey answered in their own words: "${String(userText).slice(0, 400)}"\n\n` +
+      'Reply with only JSON like {"agree":"yes","reply":"..."}. "agree" is "yes" if their words confirm or partly confirm what you said, "no" if they reject it, otherwise "unsure". ' +
+      '"reply" is what you say next: 1 or 2 short sentences, in character, picking up one specific thing they said. If they said no, adjust gracefully without arguing.';
+    const v = await AI.sample.json(prompt, { modelTier: "quick", cache: false });
+    const agree = v && ["yes", "no", "unsure"].includes(v.agree) ? v.agree : "unsure";
+    const reply = clean(v && v.reply);
+    if (!reply) throw { code: "empty_completion" };
+    return { agree, reply };
+  };
+
+  // Open conversation after the reading.
+  AI.chat = async function (st, text) {
+    AI.turns.push({ role: "user", content: String(text).slice(0, 500) });
+    const input = [{ role: "user", content: briefing(st) + "\n\nThe conversation so far:" }].concat(AI.turns.slice(-12));
+    try {
+      const r = await AI.sample(input, { modelTier: "quick", cache: false });
+      const out = clean(r.text); if (!out) throw { code: "empty_completion" };
+      AI.turns.push({ role: "assistant", content: out });
+      return out;
+    } catch (e) { AI.turns.pop(); throw e; }
+  };
+
+  AI.fail = function (e) {
+    const code = (e && e.code) || "upstream_error";
+    if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) AI.off = true;
+    if (code === "rate_limited") AI.coolUntil = Date.now() + 30000;
+    return code;
+  };
+  AI.fallback = function (code) {
+    if (code === "rate_limited") return "Give me a moment... the cards are tired. Ask me again in a little while.";
+    if (AI.off) return "No matter. I have said what the cards have to say.";
+    return "Hm. The thread slipped away from me. Say that once more?";
+  };
+})();
+
+// UI core: pacing, dialogue rendering, input controls, script runner, phase flow.
+(function () {
+  const TD = globalThis.TD, $ = s => document.querySelector(s);
+  const st = TD.state = TD.newState();
+  const UI = TD.UI = { fast: false, skipLine: false, phase: "intro", tension: 0.3, queue: Promise.resolve(), busy: false,
+    reduce: window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches,
+    coarse: window.matchMedia && matchMedia("(pointer: coarse)").matches };
+  const log = $("#log"), controls = $("#controls"), app = $("#app");
+  UI.log = log; UI.controls = controls; UI.app = app;
+
+  /* ---------------------------------------------------------- pacing */
+  UI.sleep = ms => new Promise(r => setTimeout(r, UI.fast ? ms * 0.15 : ms));
+  // Sleep that a tap on the dialogue can cut short.
+  UI.sleepSk = async ms => {
+    const end = performance.now() + ms * (UI.fast ? 0.15 : 1);
+    while (performance.now() < end && !UI.skipLine) await new Promise(r => setTimeout(r, 40));
+  };
+  const scrollLog = () => { log.scrollTop = log.scrollHeight; };
+  $("#dialogue").addEventListener("pointerdown", () => { UI.skipLine = true; });
+
+  function mkLine(cls, text) {
+    const p = document.createElement("p"); p.className = "ln " + (cls || "");
+    if (text) p.textContent = text;
+    log.appendChild(p); scrollLog(); return p;
+  }
+  async function typeInto(p, text, speed) {
+    UI.skipLine = false; p.classList.add("caret");
+    let out = "";
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i]; out += ch; p.textContent = out;
+      if (UI.skipLine) { p.textContent = text; break; }
+      let d = speed;
+      if (ch === "." && text.slice(i - 2, i + 1) === "...") d += 640;        // mid-sentence ellipsis: the reader pauses
+      else if (".!?".includes(ch) && (text[i + 1] === " " || i === text.length - 1)) d += 240;
+      else if (ch === "," || ch === ";") d += 110;
+      else if (ch === "—") d += 200;
+      if (i % 3 === 0) scrollLog();
+      await UI.sleep(d);
+    }
+    p.classList.remove("caret"); UI.skipLine = false; scrollLog();
+  }
+  async function dots(ms) {
+    const d = document.createElement("div"); d.className = "dots"; d.innerHTML = "<i></i><i></i><i></i>";
+    log.appendChild(d); scrollLog();
+    UI.skipLine = false; await UI.sleepSk(ms); UI.skipLine = false; d.remove();
+  }
+  async function say(text, o) {
+    o = o || {};
+    const t = o.raw ? text : TD.fill(text, st, o.bind || {});
+    const title = o.cls === "title";
+    if (!o.noDots) await dots(title ? 380 : Math.min(1500, 380 + t.length * 11));
+    let cls = o.cls || "";
+    if (cls === "combo" && UI.tension > 0.6) cls += " heavy";
+    await typeInto(mkLine(cls, ""), t, title ? 34 : 24);
+  }
+  async function act(text) {
+    const t = TD.fill(text, st);
+    await UI.sleepSk(300);
+    await typeInto(mkLine("act", ""), t, 14);
+  }
+  UI.say = say; UI.me = text => mkLine("me", text);
+  UI.enqueueSay = text => { UI.queue = UI.queue.then(() => say(text)); return UI.queue; };
+
+  /* ------------------------------------------------------------ mood */
+  function applyMood(s) {
+    UI.tension = s.tension;
+    TD.Audio.setMood(s.tension, s.weather);
+    TD.FX.setMood(s.tension, s.weather);
+    document.documentElement.style.setProperty("--dark", s.tension.toFixed(2));
+    UI.logicDirty && UI.logicDirty();
+  }
+  UI.applyMood = applyMood;
+  // Candle flame: a smooth random walk. It jitters harder when tension is high.
+  let fl = 1;
+  setInterval(() => {
+    if (UI.reduce) return;
+    const amp = 0.06 + UI.tension * 0.2;
+    fl += (Math.random() - 0.5) * amp; fl += (1 - fl) * 0.12; fl = Math.max(0.55, Math.min(1.25, fl));
+    document.documentElement.style.setProperty("--flick", fl.toFixed(3));
+  }, 90);
+
+  /* -------------------------------------------------------- controls */
+  const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
+  UI.el = el;
+  const clearControls = () => { controls.innerHTML = ""; };
+  UI.clearControls = clearControls;
+
+  function doInput(s) {
+    return new Promise(res => {
+      clearControls();
+      const wrap = el("div", "field-row");
+      const inp = el("input", "txt"); inp.id = "in-" + s.id; inp.type = "text"; inp.placeholder = s.placeholder;
+      inp.autocomplete = "off"; inp.maxLength = 140; inp.setAttribute("aria-label", s.placeholder);
+      const b = el("button", "btn primary"); b.type = "button"; b.textContent = s.button || "Continue";
+      wrap.append(inp, b); controls.appendChild(wrap);
+      if (s.chips) {
+        const row = el("div", "row");
+        s.chips.forEach(c => { const cb = el("button", "chip q"); cb.type = "button"; cb.textContent = c; cb.onclick = () => { inp.value = c; inp.focus(); }; row.appendChild(cb); });
+        controls.appendChild(row);
+      }
+      const done = () => { const v = inp.value.trim(); st[s.store] = v; clearControls(); if (v) UI.me(v); UI.logicDirty(); res(); };
+      b.onclick = done;
+      inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); done(); } };
+      if (!UI.coarse) setTimeout(() => inp.focus(), 60);
+    });
+  }
+  function doChoose(s) {
+    return new Promise(res => {
+      clearControls();
+      const row = el("div", "row");
+      s.options.forEach(o => {
+        const b = el("button", o.sub ? "opt" : "chip"); b.type = "button";
+        if (o.sub) { b.innerHTML = "<b></b><span></span>"; b.firstChild.textContent = o.label; b.lastChild.textContent = o.sub; } else b.textContent = o.label;
+        b.onclick = async () => {
+          clearControls(); UI.me(o.label);
+          if (s.resolve) await run(TD.resolveChoice(st, o)); else st[s.store] = o.id;
+          UI.logicDirty(); res();
+        };
+        row.appendChild(b);
+      });
+      controls.appendChild(row);
+    });
+  }
+  UI.showDots = () => { const d = el("div", "dots", "<i></i><i></i><i></i>"); log.appendChild(d); scrollLog(); return () => d.remove(); };
+
+  // Yes / No / Not sure, plus an optional way to answer in your own words when live conversation is available.
+  function askAnswer(allowFree) {
+    return new Promise(res => {
+      clearControls();
+      const row = el("div", "row");
+      [["Yes", "yes"], ["No", "no"], ["Not sure", "unsure"]].forEach(([l, v]) => {
+        const b = el("button", "btn"); b.type = "button"; b.textContent = l; b.style.flex = "1";
+        b.onclick = () => { clearControls(); UI.me(l); res({ kind: v }); }; row.appendChild(b);
+      });
+      controls.appendChild(row);
+      if (allowFree && TD.AI.usable()) {
+        const link = el("button", "chip q"); link.type = "button"; link.textContent = "Say it in my own words";
+        link.onclick = () => {
+          clearControls();
+          const wrap = el("div", "field-row"), inp = el("input", "txt"), b = el("button", "btn primary");
+          inp.id = "in-free"; inp.type = "text"; inp.maxLength = 300; inp.placeholder = "Tell her..."; inp.setAttribute("aria-label", "Your answer in your own words");
+          b.type = "button"; b.textContent = "Say it"; wrap.append(inp, b); controls.appendChild(wrap);
+          const go = () => { const v = inp.value.trim(); if (!v) return; clearControls(); UI.me(v); res({ kind: "free", text: v }); };
+          b.onclick = go; inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); go(); } };
+          if (!UI.coarse) inp.focus();
+        };
+        controls.appendChild(link);
+      }
+    });
+  }
+  async function doProbe(p) {
+    await say(p.statement); await UI.sleep(500); await say(p.ask);
+    const ans = await askAnswer(true);
+    if (ans.kind === "free") {
+      const stop = UI.showDots();
+      let out = null;
+      try { out = await TD.AI.probe(st, p, ans.text); } catch (e) { TD.AI.fail(e); }
+      stop();
+      if (out) await run(TD.resolveProbe(st, p, out.agree, { lines: [out.reply], raw: true, free: true }));
+      else await run(TD.resolveProbe(st, p, "unsure"));
+    } else await run(TD.resolveProbe(st, p, ans.kind));
+    UI.logicDirty();
+  }
+
+  /* ---------------------------------------------------------- runner */
+  async function run(steps) {
+    for (const s of steps) {
+      switch (s.t) {
+        case "say": await say(s.text, s); break;
+        case "act": await act(s.text); break;
+        case "pause": await UI.sleep(s.ms); break;
+        case "mood": applyMood(s); break;
+        case "flag": st.flags[s.name] = s.value; UI.logicDirty(); break;
+        case "lazy": await run(s.fn(st)); break;
+        case "reveal": await UI.revealCard(s.slot); break;
+        case "probe": await doProbe(s.probe); break;
+        case "choose": await doChoose(s); break;
+        case "input": await doInput(s); break;
+        case "ai_react": {
+          let done = false;
+          if (TD.AI.usable() && st.question.trim()) {
+            const stop = UI.showDots();
+            try { const r = await TD.AI.react(st); stop(); await say(r, { raw: true, noDots: true }); done = true; } catch (e) { stop(); TD.AI.fail(e); }
+          }
+          if (!done) await run(s.fallback);
+          break;
+        }
+        case "phase": await phase(s.name); break;
+      }
+    }
+  }
+  UI.run = run;
+
+  function setPhase(name) {
+    UI.phase = name;
+    app.className = "phase-" + name + (st.spreadId === "celtic" ? " spread-celtic" : "");
+    UI.logicDirty();
+  }
+  UI.setPhase = setPhase;
+
+  async function phase(name) {
+    if (name === "shuffle") {
+      setPhase("shuffle");
+      await UI.shuffleInteraction();
+      await run(TD.scriptShuffle(st));
+    } else if (name === "pick") {
+      setPhase("pick");
+      await UI.pickInteraction();
+      await UI.queue;
+      await UI.sleep(600);
+      await run(TD.scriptReady());
+      UI.queue = Promise.resolve();
+      setPhase("reading");
+      UI.buildSpread();
+      await UI.sleep(1100);
+      await run(TD.scriptReading(st));
+    } else if (name === "end") {
+      setPhase("end");
+      UI.endControls();
+    }
+  }
+
+  UI.endControls = function () {
+    clearControls();
+    if (TD.AI.usable()) UI.chatBox();
+    const row = el("div", "row");
+    const again = el("button", "btn primary"); again.type = "button"; again.textContent = "Ask again";
+    again.onclick = () => UI.reset();
+    const lg = el("button", "btn"); lg.type = "button"; lg.textContent = "See the logic";
+    lg.onclick = () => UI.openLogic();
+    row.append(again, lg); controls.appendChild(row);
+  };
+
+  // Open conversation after the reading. Her replies are written live, from your cards and what you told her.
+  UI.chatBox = function () {
+    const wrap = el("div", "field-row"), inp = el("input", "txt"), send = el("button", "btn primary");
+    const hint = el("p", "hint");
+    inp.id = "in-chat"; inp.type = "text"; inp.maxLength = 300; inp.placeholder = "Ask her anything about the cards..."; inp.setAttribute("aria-label", "Ask the reader");
+    send.type = "button"; send.textContent = "Ask"; wrap.append(inp, send);
+    hint.textContent = "She answers live, written by Claude from your cards. This uses your Claude account.";
+    controls.prepend(hint); controls.prepend(wrap);
+    let busy = false;
+    const close = () => { wrap.remove(); hint.remove(); };
+    const go = async () => {
+      const text = inp.value.trim(); if (!text || busy) return;
+      busy = true; inp.value = ""; UI.me(text); inp.disabled = send.disabled = true;
+      if (TD.AI.count >= TD.AI.MAX) {
+        close(); await say("The candle is low, and so am I. Go gently, and come back when you have lived with it a while.", { raw: true }); busy = false; return;
+      }
+      const stop = UI.showDots();
+      let reply = null, code = null;
+      try { reply = await TD.AI.chat(st, text); TD.AI.count++; } catch (e) { code = TD.AI.fail(e); }
+      stop();
+      await say(reply || TD.AI.fallback(code), { raw: true, noDots: true });
+      busy = false; UI.logicDirty();
+      if (TD.AI.usable()) { inp.disabled = send.disabled = false; if (!UI.coarse) inp.focus(); } else close();
+    };
+    send.onclick = go; inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); go(); } };
+  };
+
+  UI.reset = function () {
+    const keep = { name: st.name, demo: st.demo };
+    Object.keys(st).forEach(k => delete st[k]);
+    Object.assign(st, TD.newState(), { name: keep.name, demo: keep.demo });
+    TD.AI.turns = []; TD.AI.count = 0;
+    log.innerHTML = ""; clearControls(); UI.queue = Promise.resolve();
+    UI.clearTable && UI.clearTable();
+    app.className = "phase-intro";
+    applyMood({ tension: 0.3, weather: 0.3 });
+    main();
+  };
+
+  async function main() {
+    UI.logicDirty();
+    await run(TD.scriptIntro());
+  }
+
+  $("#btn-enter").addEventListener("click", () => {
+    try { TD.Audio.start(); } catch (e) { /* audio is optional */ }
+    $("#start").hidden = true;
+    TD.FX.init($("#fx"));
+    TD.AI.init();
+    main();
+  });
+  const sb = $("#btn-sound");
+  sb.addEventListener("click", () => {
+    TD.Audio.setOn(!TD.Audio.on); sb.setAttribute("aria-pressed", String(TD.Audio.on));
+    if (TD.Audio.on) TD.Audio.start();
+  });
+  // Every pointer movement feeds the entropy pool. It is never used for anything but the seed.
+  let lastMove = 0;
+  document.addEventListener("pointermove", e => {
+    const t = performance.now(); if (t - lastMove < 16) return; lastMove = t;
+    st.pool.move(e.clientX, e.clientY, t);
+  }, { passive: true });
+})();
+
+// UI table: hold-to-shuffle, the 78-card field with cursor pull, spread layout, reveals, card sheet, logic panel.
+(function () {
+  const TD = globalThis.TD, UI = TD.UI, st = TD.state, el = UI.el, $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  document.documentElement.style.setProperty("--back-art", TD.backArt);
+
+  UI.clearTable = function () {
+    ["#pile", "#tray", "#field", "#spread"].forEach(s => { $(s).innerHTML = ""; });
+    UI.stopField && UI.stopField();
+  };
+
+  /* ---------------------------------------------------------- shuffle */
+  UI.shuffleInteraction = () => new Promise(resolve => {
+    const pile = $("#pile"); pile.innerHTML = "";
+    for (let i = 0; i < 12; i++) { const c = el("i", "cb"); c.style.transform = `translate(${i * 0.5}px,${-i * 0.7}px)`; pile.appendChild(c); }
+    UI.clearControls();
+    const btn = el("button", "hold"); btn.type = "button"; btn.innerHTML = "Hold to<br>shuffle";
+    const hint = el("p", "hint"); hint.textContent = "Press and hold. Let go when it feels right."; hint.style.textAlign = "center";
+    UI.controls.append(btn, hint);
+    let t0 = 0, raf = 0, tick = 0;
+    const prog = () => { btn.style.setProperty("--p", Math.min(1, (performance.now() - t0) / 4000)); raf = requestAnimationFrame(prog); };
+    const down = e => {
+      if (t0) return; if (e.preventDefault) e.preventDefault();
+      if (e.pointerId !== undefined && btn.setPointerCapture) { try { btn.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ } }
+      TD.Audio.start();
+      t0 = performance.now(); btn.classList.add("holding"); pile.classList.add("shuffling");
+      tick = setInterval(() => TD.Audio.shuffleTick(), 110); prog();
+      if (e.clientX !== undefined) st.pool.move(e.clientX, e.clientY, t0);
+    };
+    const up = e => {
+      if (!t0) return;
+      const t1 = performance.now(), held = t1 - t0;
+      cancelAnimationFrame(raf); clearInterval(tick); btn.classList.remove("holding"); pile.classList.remove("shuffling");
+      t0 = 0; btn.style.setProperty("--p", 0);
+      if (held < 700) { hint.textContent = "Longer. Let the deck learn your hand."; return; }
+      if (e.clientX !== undefined) st.pool.click(e.clientX, e.clientY, t1, "shuffle-release");
+      st.pool.hold(held, t1);
+      TD.shuffle(st); UI.logicDirty(); UI.clearControls(); resolve();
+    };
+    btn.addEventListener("pointerdown", down); btn.addEventListener("pointerup", up); btn.addEventListener("pointercancel", up);
+    btn.addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat) down(e); });
+    btn.addEventListener("keyup", e => { if (e.key === " " || e.key === "Enter") up(e); });
+  });
+
+  /* --------------------------------------------------------- the field */
+  let rafId = 0;
+  UI.stopField = () => { cancelAnimationFrame(rafId); rafId = 0; };
+
+  UI.pickInteraction = () => new Promise(resolve => {
+    const field = $("#field"), tray = $("#tray");
+    field.innerHTML = ""; tray.innerHTML = "";
+    const sp = TD.spreads[st.spreadId], N = sp.count;
+    for (let i = 0; i < N; i++) tray.appendChild(el("div", "ts"));
+    const statusEl = el("p", "status"), hintEl = el("p", "hint");
+    hintEl.textContent = UI.coarse ? "Drag your finger slowly over the cards. When one pulls, hold, then lift." : "Move slowly over the cards. Click the one that pulls at you.";
+    UI.clearControls(); UI.controls.append(statusEl, hintEl);
+    const markNext = () => {
+      const n = st.picks.length;
+      [...tray.children].forEach((c, i) => c.classList.toggle("next", i === n));
+      statusEl.textContent = n < N ? `Card ${n + 1} of ${N}  ·  ${sp.positions[n].label}` : "Done";
+    };
+    markNext();
+
+    const cards = []; let ptr = { x: 0, y: 0, in: false, type: "mouse" }, W = 0, H = 0, fw = 40, fh = 68, ready = false, locked = false;
+
+    setTimeout(build, 720); // wait for the table to finish growing so the field measures correctly
+    function build() {
+      const r = field.getBoundingClientRect(); W = r.width; H = r.height;
+      fw = Math.max(34, Math.min(56, W / 8)); fh = fw * 1.7;
+      field.style.setProperty("--fw", fw + "px");
+      const cols = Math.max(6, Math.round(Math.sqrt(78 * (W - fw) / Math.max(40, H - fh)))), rows = Math.ceil(78 / cols);
+      const cells = []; for (let rr = 0; rr < rows; rr++) for (let c = 0; c < cols; c++) cells.push([c, rr]);
+      const R = st.pool.fork("layout"); TD.fisherYates(cells, R.u32);
+      const cx = (W - fw) / Math.max(1, cols - 1), cy = (H - fh) / Math.max(1, rows - 1);
+      for (let i = 0; i < 78; i++) {
+        const [c, rr] = cells[i];
+        const bx = fw / 2 + c * cx + (R.float() - 0.5) * cx * 0.7, by = fh / 2 + rr * cy + (R.float() - 0.5) * cy * 0.7;
+        const o = { i, bx, by, x: bx, y: by, rot: (R.float() - 0.5) * 48, ph: R.float() * 6.28, z: Math.floor(R.float() * 60), dwell: 0, g: 0, picked: false, el: el("div", "fc dealing", '<div class="cb"></div>') };
+        o.el.style.transform = `translate(${W / 2 - fw / 2}px,${H - fh * 0.6}px) scale(.7)`;
+        o.el.style.zIndex = o.z; o.el.style.transitionDelay = (i * 9) + "ms";
+        field.appendChild(o.el); cards.push(o);
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => cards.forEach(o => { o.el.style.transform = `translate(${o.bx - fw / 2}px,${o.by - fh / 2}px) rotate(${o.rot}deg)`; })));
+      setTimeout(() => { cards.forEach(o => { o.el.classList.remove("dealing"); o.el.style.transitionDelay = ""; }); ready = true; }, 78 * 9 + 1000);
+      TD.FX.smoke(innerWidth / 2, field.getBoundingClientRect().bottom, 10, 275);
+      last = performance.now(); rafId = requestAnimationFrame(frame);
+    }
+
+    const setPtr = e => { const r = field.getBoundingClientRect(); ptr.x = e.clientX - r.left; ptr.y = e.clientY - r.top; ptr.type = e.pointerType || "mouse"; };
+    field.addEventListener("pointermove", e => { setPtr(e); ptr.in = e.pointerType !== "touch" || ptr.down; });
+    field.addEventListener("pointerdown", e => { setPtr(e); ptr.in = true; ptr.down = true; try { field.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ } });
+    field.addEventListener("pointerleave", e => { if (e.pointerType !== "touch") ptr.in = false; });
+    field.addEventListener("pointerup", e => {
+      setPtr(e); ptr.down = false;
+      const n = nearest();
+      if (ready && !locked && n && n.d < fw * 0.62 && (e.pointerType !== "touch" || n.c.dwell >= 0.3)) select(n.c.i, e);
+      else if (e.pointerType === "touch" && n && n.d < fw * 0.62) hintEl.textContent = "Slower. Stay on one card until it pulls.";
+      if (e.pointerType === "touch") ptr.in = false;
+    });
+
+    function nearest() {
+      let best = null, bd = 1e9;
+      for (const c of cards) { if (c.picked) continue; const d = Math.hypot(c.x - ptr.x, c.y - ptr.y); if (d < bd) { bd = d; best = c; } }
+      return best ? { c: best, d: bd } : null;
+    }
+
+    let last = 0;
+    function frame(t) {
+      const dt = Math.min(0.05, (t - last) / 1000); last = t;
+      const rad = fw * 1.9, n = ptr.in ? nearest() : null, near = n && n.d < fw * 0.9 ? n.c : null;
+      for (const c of cards) {
+        if (c.picked) continue;
+        let x = c.bx, y = c.by, s = 1, k = 0, rot = c.rot;
+        if (!UI.reduce) { x += Math.sin(t / 1500 + c.ph) * 2.2; y += Math.cos(t / 1900 + c.ph * 1.3) * 1.8; }
+        if (ptr.in && ready) {
+          const d = Math.hypot(x - ptr.x, y - ptr.y);
+          if (d < rad) { k = 1 - d / rad; s = 1 + 0.42 * k * k; x += (ptr.x - x) * 0.14 * k; y += (ptr.y - y) * 0.14 * k; }
+        }
+        if (c === near) { c.dwell += dt; if (!UI.reduce && c.dwell > 0.12) { x += (Math.random() - 0.5) * 1.6; y += (Math.random() - 0.5) * 1.6; rot += Math.sin(t / 40) * 0.7; } }
+        else c.dwell = Math.max(0, c.dwell - dt * 2);
+        const g = Math.min(1, Math.max(k * 0.6, c.dwell / 0.7));
+        c.x = x; c.y = y;
+        if (ready) {
+          c.el.style.transform = `translate(${(x - fw / 2).toFixed(1)}px,${(y - fh / 2).toFixed(1)}px) rotate(${rot.toFixed(1)}deg) scale(${s.toFixed(3)})`;
+          c.el.style.zIndex = c === near ? 200 : c.z + Math.round(k * 80);
+          if (Math.abs(g - c.g) > 0.04) { c.g = g; c.el.style.setProperty("--g", g.toFixed(2)); }
+        }
+      }
+      rafId = requestAnimationFrame(frame);
+    }
+
+    function select(i, e) {
+      const c = cards[i]; if (c.picked || locked || st.picks.length >= N) return;
+      locked = true; c.picked = true;
+      const entry = TD.pickCard(st, i, e.clientX, e.clientY, performance.now());
+      TD.Audio.pick();
+      const fr = c.el.getBoundingClientRect();
+      const from = { x: fr.left + fr.width / 2, y: fr.top + fr.height / 2 };
+      const slotEl = tray.children[entry.slot], tr = slotEl.getBoundingClientRect();
+      const to = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
+      const fly = el("div", "fly cb"); fly.style.width = fr.width + "px"; fly.style.height = fr.height + "px";
+      fly.style.transform = `translate(${fr.left}px,${fr.top}px)`; document.body.appendChild(fly);
+      c.el.classList.add("gone");
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        fly.style.transform = `translate(${to.x - fr.width / 2}px,${to.y - fr.height / 2}px) scale(${tr.width / fr.width},${tr.height / fr.height})`;
+        fly.style.opacity = "0.85";
+      }));
+      TD.FX.pull(from, to, () => { slotEl.classList.add("filled"); fly.remove(); });
+      const finished = st.picks.length >= N;
+      markNext(); UI.logicDirty();
+      if (!finished && st.picks.length % (N > 3 ? 3 : 1) === 0) UI.enqueueSay(st.pool.fork("ack" + st.picks.length).pick(TD.voice.pickAck));
+      setTimeout(() => { if (finished) { UI.stopField(); resolve(); } else locked = false; }, 1300);
+    }
+  });
+
+  /* ------------------------------------------------------------ spread */
+  UI.buildSpread = function () {
+    const sp = TD.spreads[st.spreadId], spread = $("#spread"), celtic = sp.id === "celtic";
+    spread.innerHTML = ""; $("#field").innerHTML = ""; $("#tray").innerHTML = "";
+    const W = $("#table").clientWidth, H = celtic ? Math.min(innerHeight * 0.5, 440) : 208, gap = celtic ? 6 : 12;
+    const cw = celtic ? Math.min((W - 3 * gap) / 4, (H - 8 - 3 * gap) / 6.8) : Math.min((W - 2 * gap) / 3, (H - 34) / 1.7, 96);
+    spread.style.setProperty("--cw", cw.toFixed(1) + "px"); spread.style.setProperty("--gap", gap + "px");
+    spread.style.setProperty("--cols", sp.grid.cols); spread.style.setProperty("--rows", sp.grid.rows);
+    sp.positions.forEach((pos, i) => {
+      const pk = st.picks[i];
+      const slot = el("div", "sl" + (pos.cross ? " cross" : "")); slot.dataset.slot = i;
+      slot.style.gridColumn = pos.c; slot.style.gridRow = pos.r; slot.style.animationDelay = (i * 0.09) + "s";
+      const card = el("div", "card", '<div class="inner"><div class="back"></div><div class="face">' + TD.faceSVG(pk.card, pk.rev) + "</div></div>");
+      card.setAttribute("role", "button"); card.tabIndex = 0; card.setAttribute("aria-label", pos.label + " card");
+      const open = () => { if (card.classList.contains("flipped")) UI.openCard(i); };
+      card.addEventListener("click", open); card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+      slot.append(card, el("div", "sl-label", esc(pos.label)));
+      spread.appendChild(slot);
+    });
+  };
+
+  UI.revealCard = async function (i) {
+    const slot = $('#spread .sl[data-slot="' + i + '"]'), c = st.draw[i];
+    if (!slot) return;
+    document.querySelectorAll("#spread .sl.speaking").forEach(n => n.classList.remove("speaking"));
+    if (c.tone <= -1) TD.Audio.hush(c.tone <= -2 ? 2400 : 1300);
+    await UI.sleep(c.tone <= -2 ? 900 : 350);
+    slot.querySelector(".card").classList.add("flipped"); slot.classList.add("speaking");
+    TD.Audio.flip();
+    const r = slot.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    setTimeout(() => {
+      TD.Audio.reveal(c.tone, c.rev);
+      TD.FX.burst(x, y, c.tone >= 1 ? 42 : c.tone === 0 ? 270 : 350, c.tone <= -2 ? 30 : 16);
+      if (c.tone <= -1) TD.FX.smoke(x, y, 10, c.tone <= -2 ? 350 : 275);
+      if (c.tone <= -2 && !UI.reduce) {
+        const f = $("#flash"); f.classList.add("on"); setTimeout(() => f.classList.remove("on"), 120);
+        UI.app.classList.add("shake"); setTimeout(() => UI.app.classList.remove("shake"), 600);
+      }
+    }, 450);
+    UI.logicDirty();
+    await UI.sleep(900);
+  };
+
+  /* -------------------------------------------------------- card sheet */
+  const sheetCard = $("#sheet-card"), sheetLogic = $("#sheet-logic");
+  UI.openCard = function (i) {
+    const c = st.draw[i], other = TD.interpret(c.card, !c.rev), pos = c.pos;
+    $("#sheet-card-body").innerHTML =
+      `<div class="sheet-top"><h2>${esc(c.name)}</h2><button class="tbtn" id="close-card" type="button">Close</button></div>` +
+      `<div class="detail-face">${TD.faceSVG(c.card, c.rev)}</div>` +
+      `<div><span class="pill">${c.rev ? "Reversed" : "Upright"}</span> <span class="pill">${esc(pos.label)}</span> <span class="pill">${esc(c.tier)}</span></div>` +
+      `<p class="kw">${esc(c.keywords.join(", "))}</p><p>${esc(c.text)}</p>` +
+      `<p class="hint">In this position, ${esc(pos.label.toLowerCase())}: ${esc(pos.meaning.toLowerCase())}.</p>` +
+      `<p class="hint">Had it fallen ${c.rev ? "upright" : "reversed"}: ${esc(other.text)}</p>`;
+    sheetCard.hidden = false; $("#close-card").focus();
+  };
+  const closeAll = () => { sheetCard.hidden = true; sheetLogic.hidden = true; };
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeAll(); });
+  sheetCard.addEventListener("click", e => { if (e.target.closest("#close-card") || e.target === sheetCard) sheetCard.hidden = true; });
+
+  /* ------------------------------------------------------- logic panel */
+  UI.openLogic = function () { sheetLogic.hidden = false; renderLogic(); };
+  UI.logicDirty = function () { if (!sheetLogic.hidden) renderLogic(); };
+  $("#btn-logic").addEventListener("click", UI.openLogic);
+
+  function report() {
+    const p = st.pool;
+    return {
+      entropy: { seed_digest: p.seedHex(), hold_ms: p.holdMs, pointer_moves: p.moves, absorbed_values: p.absorbed, clicks: p.clicks, shuffle_passes: st.passes },
+      shuffled_order: st.shuffled ? st.shuffled.map(c => c.id) : null,
+      spread: st.spreadId, showcase_draw: st.demo,
+      draw: st.draw.map(c => ({ slot: c.slot + 1, position: c.slotKey, id: c.id, name: c.name, reversed: c.rev, tier: c.tier })),
+      combos_triggered: st.combos.map(c => ({ id: c.id, flag: c.flag, override: c.override })),
+      flags: st.flags,
+      variables: (({ name, question, emotion, noun, subject, topic }) => ({ name, question, emotion, noun, subject, topic }))(TD.context(st)),
+      cold_reading: { hits: st.hits, misses: st.misses, probes: st.probeLog, outcome_feel: st.outcomeFeel }
+    };
+  }
+  function renderLogic() {
+    const p = st.pool, ctx = TD.context(st), keep = $("#sheet-logic").scrollTop;
+    const kv = o => '<dl class="kv">' + Object.entries(o).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("") + "</dl>";
+    const draw = st.draw.length ? st.draw : st.picks.map((pk, i) => ({ slot: i, slotLabel: TD.spreads[st.spreadId].positions[i].label, id: pk.card.id, name: pk.card.name, rev: pk.rev, tier: TD.TIERS[String(pk.rev ? pk.card.tone.reversed : pk.card.tone.upright)] }));
+    const toggles = `<div class="tg">
+      <button class="tbtn ${st.demo ? "on" : ""}" id="t-demo" type="button" aria-pressed="${st.demo}">Showcase draw</button>
+      <button class="tbtn ${UI.fast ? "on" : ""}" id="t-fast" type="button" aria-pressed="${UI.fast}">Fast pacing</button>
+      <button class="tbtn ${TD.AI.enabled ? "on" : ""}" id="t-ai" type="button" aria-pressed="${TD.AI.enabled}">Live conversation</button>
+      <button class="tbtn" id="t-copy" type="button">Copy reading JSON</button></div>
+      <p class="why">Showcase draw fixes a three-card reading (The Lovers, The Tower reversed, Three of Swords) so every branch fires. Set it before you pick, or press Ask again.</p>`;
+    $("#sheet-logic-body").innerHTML =
+      `<div class="sheet-top"><h2>Logic</h2><button class="tbtn" id="close-logic" type="button">Close</button></div>` + toggles +
+      `<section><h3>1. Entropy seed</h3><p class="why">The seed comes from your hands (hold time, pointer path, click points), never the clock.</p>${kv({
+        "seed digest": p.seedHex(), "hold (ms)": p.holdMs == null ? "not yet" : p.holdMs, "pointer moves": p.moves, "values absorbed": p.absorbed,
+        "click points": p.clicks.length ? p.clicks.map(c => `(${c.x},${c.y})`).join(" ") : "none yet", "shuffle passes": st.passes || "not yet" })}</section>` +
+      `<section><h3>2. Fisher-Yates order</h3><p class="why">Unbiased shuffle of all 78 cards, several passes. First ten in fan order:</p><div>${st.shuffled ? esc(st.shuffled.slice(0, 10).map(c => c.id).join("  ")) : "not shuffled yet"}</div></section>` +
+      `<section><h3>3. Drawn cards</h3><p class="why">Orientation: system true-random bit XOR a bit from your click-seeded generator.</p><div class="scroll"><table><tr><th>#</th><th>position</th><th>id</th><th>card</th><th>facing</th><th>tier</th></tr>${
+        draw.length ? draw.map(c => `<tr><td>${c.slot + 1}</td><td>${esc(c.slotLabel)}</td><td>${esc(c.id)}</td><td>${esc(c.name)}</td><td>${c.rev ? "reversed" : "upright"}</td><td>${esc(c.tier)}</td></tr>`).join("") : '<tr><td colspan="6" class="off">nothing drawn yet</td></tr>'}</table></div></section>` +
+      `<section><h3>4. Combination checks</h3><p class="why">Rules read the whole draw. "override" rules replace the generic card text at the later card.</p><div class="scroll"><table><tr><th>flag</th><th>value</th><th>rule</th></tr>${
+        TD.combos.slice().sort((a, b) => b.priority - a.priority).map(r => { const on = !!st.flags[r.flag]; return `<tr class="${on ? "hit" : "off"}"><td>${esc(r.flag)}</td><td>${on}${r.override ? " (override)" : ""}</td><td>${esc(r.rule)}</td></tr>`; }).join("")}</table></div></section>` +
+      `<section><h3>5. Context variables</h3><p class="why">Injected into the script wherever you see {name}, {question}, {emotion}, {subject}.</p>${kv({
+        name: ctx.name, question: ctx.question, emotion: ctx.emotion, subject: ctx.subject, "topic detected": ctx.topicId, spread: st.spreadId })}</section>` +
+      `<section><h3>6. Cold reading state</h3><p class="why">Yes answers raise rapport. Two No answers make the reader hedge and defer to you.</p>${kv({
+        hits: st.hits, misses: st.misses, probes: st.probeLog.length ? st.probeLog.map(x => x.id + ":" + x.answer).join(", ") : "none yet", "outcome feel": st.outcomeFeel || "not asked", "live conversation": TD.AI.ready ? (TD.AI.off ? "declined or unavailable" : TD.AI.enabled ? "on (" + TD.AI.count + " chat turns)" : "switched off") : TD.AI.status, tension: UI.tension.toFixed(2), phase: UI.phase })}</section>` +
+      `<section id="json-box" hidden><h3>Reading JSON</h3><textarea id="json-out" class="txt" rows="10" readonly style="font-family:var(--mono);font-size:12px;width:100%"></textarea></section>`;
+    $("#sheet-logic").scrollTop = keep;
+  }
+  sheetLogic.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.id === "close-logic") sheetLogic.hidden = true;
+    else if (b.id === "t-demo") { st.demo = !st.demo; renderLogic(); }
+    else if (b.id === "t-fast") { UI.fast = !UI.fast; renderLogic(); }
+    else if (b.id === "t-ai") { TD.AI.enabled = !TD.AI.enabled; renderLogic(); }
+    else if (b.id === "t-copy") {
+      const json = JSON.stringify(report(), null, 2), box = $("#json-box"), ta = $("#json-out");
+      box.hidden = false; ta.value = json; ta.focus(); ta.select();
+      try { navigator.clipboard.writeText(json).then(() => { b.textContent = "Copied"; }, () => { b.textContent = "Select and copy below"; }); } catch (x) { b.textContent = "Select and copy below"; }
+    }
+  });
+})();
+
+</script>
+</body>
+</html>
